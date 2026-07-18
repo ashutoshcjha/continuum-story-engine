@@ -14,6 +14,7 @@ import type { ContinuumProject, EntityType } from './model';
 import { projectToFlow } from './model';
 
 const entityLabels: Record<EntityType, string> = {
+  chapter: 'Chapter',
   character: 'Character',
   location: 'Location',
   organization: 'Organization',

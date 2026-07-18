@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import '@xyflow/react/dist/style.css';
 import './styles.css';
+import { ChapterTabs, ChapterWorkspace } from './ChapterWorkspace';
 import { loadLastLocalProject, saveLocalProject } from './db';
 import { prepareStoryImage } from './imageProcessing';
 import { exportProject, exportStoryboardHtml, importProject } from './io';
@@ -8,18 +9,23 @@ import {
   createEmptyProject,
   createEntity,
   createSampleProject,
+  getChapters,
+  getScenesForChapter,
+  isStoryChapter,
   isStoryScene,
   normalizeProject,
   type ContinuumProject,
   type EntityType,
+  type StoryChapter,
   type StoryEntity,
   type StoryScene,
 } from './model';
 import { WorldCanvas } from './WorldCanvas';
 
-type View = 'world' | 'storyboard' | 'brief';
+type View = 'world' | 'chapters' | 'storyboard' | 'brief';
 
 const entityLabels: Record<EntityType, string> = {
+  chapter: 'Chapter',
   character: 'Character',
   location: 'Location',
   organization: 'Organization',
@@ -74,18 +80,23 @@ function EntityInspector({
       <aside className="inspector empty-panel">
         <span>Selection</span>
         <h2>Choose an object</h2>
-        <p>Select a card or node to edit its structured story cues.</p>
+        <p>Select a chapter, scene, card, or node to edit its structured story cues.</p>
       </aside>
     );
   }
 
   const patch = (changes: Partial<StoryEntity>) => updateEntity({ ...entity, ...changes });
   const scene = isStoryScene(entity) ? entity : undefined;
+  const chapter = isStoryChapter(entity) ? entity : undefined;
   const patchScene = (changes: Partial<StoryScene['scene']>) => {
     if (scene) updateEntity({ ...scene, scene: { ...scene.scene, ...changes } });
   };
+  const patchChapter = (changes: Partial<StoryChapter['chapter']>) => {
+    if (chapter) updateEntity({ ...chapter, chapter: { ...chapter.chapter, ...changes } });
+  };
   const characters = project.entities.filter((item) => item.type === 'character');
   const locations = project.entities.filter((item) => item.type === 'location');
+  const chapters = getChapters(project);
   const images = entity.images ?? [];
   const links = entity.links ?? [];
 
@@ -208,14 +219,33 @@ function EntityInspector({
         )}
       </section>
 
+      {chapter && (
+        <div className="scene-fields">
+          <label className="field">
+            <span>Chapter order</span>
+            <input type="number" min="1" value={chapter.chapter.order} onChange={(event) => patchChapter({ order: Number(event.target.value) })} />
+          </label>
+          <TextField label="Chapter objective" value={chapter.chapter.objective} multiline onChange={(objective) => patchChapter({ objective })} />
+          <TextField label="Opening state" value={chapter.chapter.openingState} multiline onChange={(openingState) => patchChapter({ openingState })} />
+          <TextField label="Closing state" value={chapter.chapter.closingState} multiline onChange={(closingState) => patchChapter({ closingState })} />
+          <TextField label="Ghostwriter notes" value={chapter.chapter.ghostwriterNotes} multiline onChange={(ghostwriterNotes) => patchChapter({ ghostwriterNotes })} />
+        </div>
+      )}
+
       {scene && (
         <div className="scene-fields">
           <div className="two-fields">
             <label className="field">
-              <span>Order</span>
-              <input type="number" value={scene.scene.order} onChange={(event) => patchScene({ order: Number(event.target.value) })} />
+              <span>Order in chapter</span>
+              <input type="number" min="1" value={scene.scene.order} onChange={(event) => patchScene({ order: Number(event.target.value) })} />
             </label>
-            <TextField label="Chapter" value={scene.scene.chapter} onChange={(chapter) => patchScene({ chapter })} />
+            <label className="field">
+              <span>Chapter</span>
+              <select value={scene.scene.chapterId ?? ''} onChange={(event) => patchScene({ chapterId: event.target.value || undefined })}>
+                <option value="">Not assigned</option>
+                {chapters.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+              </select>
+            </label>
           </div>
           <label className="field">
             <span>POV character</span>
@@ -244,27 +274,41 @@ function EntityInspector({
           <TextField label="Ghostwriter notes" value={scene.scene.ghostwriterNotes} multiline onChange={(ghostwriterNotes) => patchScene({ ghostwriterNotes })} />
         </div>
       )}
-      {!scene && <TextField label="Notes" value={entity.notes} multiline onChange={(notes) => patch({ notes })} />}
+
+      {!scene && !chapter && <TextField label="Notes" value={entity.notes} multiline onChange={(notes) => patch({ notes })} />}
     </aside>
   );
 }
 
-function Storyboard({ project, select }: { project: ContinuumProject; select: (id: string) => void }) {
-  const scenes = project.entities.filter(isStoryScene).sort((a, b) => a.scene.order - b.scene.order);
+function Storyboard({
+  project,
+  selectedChapterId,
+  onSelectChapter,
+  select,
+}: {
+  project: ContinuumProject;
+  selectedChapterId?: string;
+  onSelectChapter: (chapterId: string) => void;
+  select: (id: string) => void;
+}) {
+  const chapters = getChapters(project);
+  const chapter = chapters.find((item) => item.id === selectedChapterId) ?? chapters[0];
+  const scenes = chapter ? getScenesForChapter(project, chapter.id) : [];
   const entityName = (id?: string) => project.entities.find((entity) => entity.id === id)?.name ?? 'Not set';
 
   return (
     <section className="storyboard">
-      <div className="section-intro">
-        <span>Story stream</span>
-        <h2>Scene storyboard</h2>
-        <p>Arrange the narrative as cues, decisions, reveals, and consequences—not manuscript prose.</p>
+      <ChapterTabs project={project} selectedChapterId={chapter?.id} onSelect={onSelectChapter} />
+      <div className="section-intro chapter-scoped-intro">
+        <span>Story stream · Chapter {chapter?.chapter.order ?? '—'}</span>
+        <h2>{chapter?.name ?? 'No chapter selected'}</h2>
+        <p>{chapter?.chapter.objective || chapter?.summary || 'Define what this chapter must change.'}</p>
       </div>
       <div className="scene-grid">
         {scenes.map((scene) => (
           <button key={scene.id} className="scene-card" onClick={() => select(scene.id)}>
             {scene.images?.[0] && <img className="scene-card-image" src={scene.images[0].thumbnailUrl ?? scene.images[0].dataUrl} alt="" loading="lazy" decoding="async" />}
-            <div className="scene-card-top"><span>{scene.scene.chapter}</span><b>{String(scene.scene.order).padStart(2, '0')}</b></div>
+            <div className="scene-card-top"><span>{chapter?.name}</span><b>{String(scene.scene.order).padStart(2, '0')}</b></div>
             <h3>{scene.name}</h3>
             <p>{scene.summary || 'Add a one-sentence scene summary.'}</p>
             <dl>
@@ -277,25 +321,44 @@ function Storyboard({ project, select }: { project: ContinuumProject; select: (i
           </button>
         ))}
       </div>
-      {!scenes.length && <div className="empty-canvas">Create your first scene from the left sidebar.</div>}
+      {!scenes.length && <div className="empty-canvas">Create a scene and assign it to this chapter.</div>}
     </section>
   );
 }
 
-function Brief({ project }: { project: ContinuumProject }) {
-  const scenes = project.entities.filter(isStoryScene).sort((a, b) => a.scene.order - b.scene.order);
+function Brief({
+  project,
+  selectedChapterId,
+  onSelectChapter,
+}: {
+  project: ContinuumProject;
+  selectedChapterId?: string;
+  onSelectChapter: (chapterId: string) => void;
+}) {
+  const chapters = getChapters(project);
+  const chapter = chapters.find((item) => item.id === selectedChapterId) ?? chapters[0];
+  const scenes = chapter ? getScenesForChapter(project, chapter.id) : [];
 
   return (
     <section className="brief">
+      <ChapterTabs project={project} selectedChapterId={chapter?.id} onSelect={onSelectChapter} />
       <div className="brief-paper">
-        <span className="eyebrow">Ghostwriter briefing document</span>
-        <h1>{project.title}</h1>
-        <h2>{project.logline || 'Add a logline to frame the assignment.'}</h2>
-        <p className="premise">{project.premise}</p>
+        <span className="eyebrow">Ghostwriter chapter briefing document</span>
+        <h1>{chapter?.name ?? project.title}</h1>
+        <h2>{chapter?.chapter.objective || chapter?.summary || project.logline || 'Define the chapter objective.'}</h2>
+        <p className="premise"><b>{project.title}</b><br />{project.logline}</p>
+
+        {chapter && (
+          <section className="chapter-state-brief">
+            <div><small>Opening state</small><p>{chapter.chapter.openingState || 'Not defined'}</p></div>
+            <div><small>Required closing state</small><p>{chapter.chapter.closingState || 'Not defined'}</p></div>
+          </section>
+        )}
+
         {scenes.map((scene) => (
           <article key={scene.id}>
             {scene.images?.[0] && <img className="brief-image" src={scene.images[0].dataUrl} alt="" loading="lazy" decoding="async" />}
-            <header><b>Scene {scene.scene.order}</b><span>{scene.scene.chapter}</span></header>
+            <header><b>Scene {scene.scene.order}</b><span>{chapter?.name}</span></header>
             <h3>{scene.name}</h3>
             <p>{scene.summary}</p>
             <div className="brief-grid">
@@ -306,7 +369,7 @@ function Brief({ project }: { project: ContinuumProject }) {
               <div><small>Reveal</small>{scene.scene.reveal || '—'}</div>
               <div><small>Keep concealed</small>{scene.scene.conceal || '—'}</div>
             </div>
-            {scene.scene.ghostwriterNotes && <blockquote><b>Direction</b>{scene.scene.ghostwriterNotes}</blockquote>}
+            {scene.scene.ghostwriterNotes && <blockquote><b>Scene direction</b>{scene.scene.ghostwriterNotes}</blockquote>}
             {(scene.links?.length ?? 0) > 0 && (
               <div className="brief-links">
                 <b>References</b>
@@ -315,6 +378,10 @@ function Brief({ project }: { project: ContinuumProject }) {
             )}
           </article>
         ))}
+
+        {chapter?.chapter.ghostwriterNotes && (
+          <blockquote className="chapter-notes"><b>Chapter direction</b>{chapter.chapter.ghostwriterNotes}</blockquote>
+        )}
       </div>
     </section>
   );
@@ -323,16 +390,26 @@ function Brief({ project }: { project: ContinuumProject }) {
 export default function App() {
   const [project, setProject] = useState<ContinuumProject>(() => createSampleProject());
   const [selectedId, setSelectedId] = useState<string>();
+  const [selectedChapterId, setSelectedChapterId] = useState<string>();
   const [view, setView] = useState<View>('world');
   const [saveState, setSaveState] = useState('Loading local project…');
   const importRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadLastLocalProject().then((stored) => {
-      if (stored) setProject(normalizeProject(stored));
+      const loaded = stored ? normalizeProject(stored) : normalizeProject(project);
+      setProject(loaded);
+      setSelectedChapterId(getChapters(loaded)[0]?.id);
       setSaveState('Saved locally');
     });
   }, []);
+
+  useEffect(() => {
+    const chapters = getChapters(project);
+    if (!chapters.some((chapter) => chapter.id === selectedChapterId)) {
+      setSelectedChapterId(chapters[0]?.id);
+    }
+  }, [project, selectedChapterId]);
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -347,6 +424,18 @@ export default function App() {
 
   const selected = project.entities.find((entity) => entity.id === selectedId);
 
+  const selectChapter = (chapterId: string) => {
+    setSelectedChapterId(chapterId);
+    setSelectedId(chapterId);
+  };
+
+  const selectEntity = (entityId: string) => {
+    const entity = project.entities.find((item) => item.id === entityId);
+    setSelectedId(entityId);
+    if (entity && isStoryChapter(entity)) setSelectedChapterId(entity.id);
+    if (entity && isStoryScene(entity) && entity.scene.chapterId) setSelectedChapterId(entity.scene.chapterId);
+  };
+
   const updateProject = (patch: Partial<ContinuumProject>) => {
     setProject((current) => ({ ...current, ...patch }));
   };
@@ -356,6 +445,8 @@ export default function App() {
       ...current,
       entities: current.entities.map((item) => item.id === entity.id ? entity : item),
     }));
+    if (isStoryChapter(entity)) setSelectedChapterId(entity.id);
+    if (isStoryScene(entity) && entity.scene.chapterId) setSelectedChapterId(entity.scene.chapterId);
   };
 
   const moveEntity = (id: string, position: { x: number; y: number }) => {
@@ -366,15 +457,42 @@ export default function App() {
   };
 
   const addEntity = (type: EntityType) => {
-    setProject((current) => {
-      const entity = createEntity(type, current.entities.filter((item) => item.type === type).length);
-      setSelectedId(entity.id);
-      return { ...current, entities: [...current.entities, entity] };
-    });
-    if (type === 'scene') setView('storyboard');
+    const typeCount = project.entities.filter((item) => item.type === type).length;
+    const entity = createEntity(type, typeCount);
+
+    if (isStoryScene(entity)) {
+      const chapterId = selectedChapterId ?? getChapters(project)[0]?.id;
+      entity.scene.chapterId = chapterId;
+      entity.scene.order = getScenesForChapter(project, chapterId).length + 1;
+      if (chapterId) setSelectedChapterId(chapterId);
+      setView('storyboard');
+    }
+
+    if (isStoryChapter(entity)) {
+      setSelectedChapterId(entity.id);
+      setView('chapters');
+    }
+
+    setProject((current) => ({ ...current, entities: [...current.entities, entity] }));
+    setSelectedId(entity.id);
   };
 
   const removeEntity = (id: string) => {
+    const entity = project.entities.find((item) => item.id === id);
+    if (!entity) return;
+
+    if (isStoryChapter(entity)) {
+      if (getChapters(project).length === 1) {
+        window.alert('A project must keep at least one chapter.');
+        return;
+      }
+      const sceneCount = getScenesForChapter(project, entity.id).length;
+      if (sceneCount > 0) {
+        window.alert(`Move or delete the ${sceneCount} scene${sceneCount === 1 ? '' : 's'} in this chapter before deleting it.`);
+        return;
+      }
+    }
+
     setProject((current) => ({
       ...current,
       entities: current.entities.filter((item) => item.id !== id),
@@ -401,9 +519,9 @@ export default function App() {
           <div><b>Continuum</b><span>Story Engine</span></div>
         </div>
         <nav>
-          {(['world', 'storyboard', 'brief'] as View[]).map((item) => (
+          {(['world', 'chapters', 'storyboard', 'brief'] as View[]).map((item) => (
             <button key={item} className={view === item ? 'active' : ''} onClick={() => setView(item)}>
-              {item === 'world' ? 'World' : item === 'storyboard' ? 'Storyboard' : 'Brief'}
+              {item === 'world' ? 'World' : item === 'chapters' ? 'Chapters' : item === 'storyboard' ? 'Storyboard' : 'Brief'}
             </button>
           ))}
         </nav>
@@ -423,6 +541,7 @@ export default function App() {
               try {
                 const imported = await importProject(file);
                 setProject(imported);
+                setSelectedChapterId(getChapters(imported)[0]?.id);
                 setSelectedId(undefined);
               } catch (error) {
                 window.alert(error instanceof Error ? error.message : 'Could not open the file.');
@@ -439,7 +558,7 @@ export default function App() {
           <label><span>Logline</span><textarea value={project.logline} onChange={(event) => updateProject({ logline: event.target.value })} /></label>
         </div>
         <div className="add-menu">
-          <span>Add to world</span>
+          <span>Add to story</span>
           {(Object.keys(entityLabels) as EntityType[]).map((type) => (
             <button key={type} onClick={() => addEntity(type)}>
               <i>{entityLabels[type].slice(0, 1)}</i>{entityLabels[type]}<b>＋</b>
@@ -450,7 +569,9 @@ export default function App() {
           className="new-project"
           onClick={() => {
             if (window.confirm('Start a new blank project? Export the current project first if needed.')) {
-              setProject(createEmptyProject());
+              const blank = createEmptyProject();
+              setProject(blank);
+              setSelectedChapterId(getChapters(blank)[0]?.id);
               setSelectedId(undefined);
             }
           }}
@@ -464,13 +585,32 @@ export default function App() {
           <WorldCanvas
             project={project}
             selectedId={selectedId}
-            onSelect={setSelectedId}
+            onSelect={selectEntity}
             onMoveEntity={moveEntity}
             onCreateRelationship={createRelationship}
           />
         )}
-        {view === 'storyboard' && <Storyboard project={project} select={setSelectedId} />}
-        {view === 'brief' && <Brief project={project} />}
+        {view === 'chapters' && (
+          <ChapterWorkspace
+            project={project}
+            selectedChapterId={selectedChapterId}
+            onSelectChapter={selectChapter}
+            onSelectEntity={selectEntity}
+            onOpenStoryboard={() => setView('storyboard')}
+            onOpenBrief={() => setView('brief')}
+          />
+        )}
+        {view === 'storyboard' && (
+          <Storyboard
+            project={project}
+            selectedChapterId={selectedChapterId}
+            onSelectChapter={selectChapter}
+            select={selectEntity}
+          />
+        )}
+        {view === 'brief' && (
+          <Brief project={project} selectedChapterId={selectedChapterId} onSelectChapter={selectChapter} />
+        )}
       </main>
 
       <EntityInspector entity={selected} project={project} updateEntity={updateEntity} removeEntity={removeEntity} />
