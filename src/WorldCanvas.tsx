@@ -15,8 +15,13 @@ import {
   type NodeTypes,
   type ReactFlowInstance,
 } from '@xyflow/react';
-import type { ContinuumProject, EntityType } from './model';
-import { projectToFlow } from './model';
+import {
+  chapterInheritedPrefix,
+  chapterMembershipPrefix,
+  projectToFlow,
+  type ContinuumProject,
+  type EntityType,
+} from './model';
 
 const entityLabels: Record<EntityType, string> = {
   chapter: 'Chapter',
@@ -103,8 +108,10 @@ export function WorldCanvas({
   const flowInstanceRef = useRef<ReactFlowInstance | null>(null);
 
   const edges = useMemo<Edge[]>(() => flow.edges.map((edge) => {
-    const isMembership = edge.id.startsWith('chapter-membership_');
-    const stroke = isMembership ? '#78918b' : '#607a76';
+    const isManualMembership = edge.id.startsWith(chapterMembershipPrefix);
+    const isInheritedMembership = edge.id.startsWith(chapterInheritedPrefix);
+    const isMembership = isManualMembership || isInheritedMembership;
+    const stroke = isInheritedMembership ? '#9a8a6b' : isManualMembership ? '#78918b' : '#607a76';
     return {
       ...edge,
       type: 'default',
@@ -112,12 +119,16 @@ export function WorldCanvas({
       selected: edge.id === selectedRelationshipId,
       deletable: true,
       interactionWidth: 28,
-      className: isMembership ? 'chapter-membership-edge' : 'relationship-edge',
+      className: isInheritedMembership
+        ? 'chapter-inherited-edge'
+        : isManualMembership
+          ? 'chapter-membership-edge'
+          : 'relationship-edge',
       style: {
         ...edge.style,
         stroke,
         strokeWidth: edge.id === selectedRelationshipId ? 2.8 : 1.8,
-        strokeDasharray: isMembership ? '6 5' : undefined,
+        strokeDasharray: isInheritedMembership ? '2 5' : isManualMembership ? '6 5' : undefined,
       },
       markerEnd: {
         type: MarkerType.ArrowClosed,
@@ -128,7 +139,7 @@ export function WorldCanvas({
       labelBgPadding: [7, 4] as [number, number],
       labelBgBorderRadius: 6,
       labelBgStyle: { fill: '#f8f8f4', fillOpacity: 0.94 },
-      labelStyle: { fill: '#53645f', fontSize: 10, fontWeight: 600 },
+      labelStyle: { fill: isMembership ? '#6a675e' : '#53645f', fontSize: 10, fontWeight: 600 },
     };
   }), [flow.edges, selectedRelationshipId]);
 

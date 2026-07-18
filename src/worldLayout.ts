@@ -1,6 +1,7 @@
 import type { XYPosition } from '@xyflow/react';
 import {
   getChapters,
+  getSceneChapterResolutions,
   isStoryChapter,
   isStoryScene,
   type ContinuumProject,
@@ -34,11 +35,12 @@ function connect(adjacency: Map<string, Set<string>>, firstId?: string, secondId
 
 function entitySort(project: ContinuumProject, adjacency: Map<string, Set<string>>) {
   const chapterOrder = new Map(getChapters(project).map((chapter) => [chapter.id, chapter.chapter.order]));
+  const sceneChapters = getSceneChapterResolutions(project);
   return (first: StoryEntity, second: StoryEntity) => {
     if (isStoryChapter(first) && isStoryChapter(second)) return first.chapter.order - second.chapter.order;
     if (isStoryScene(first) && isStoryScene(second)) {
-      return (chapterOrder.get(first.scene.chapterId ?? '') ?? Number.MAX_SAFE_INTEGER)
-        - (chapterOrder.get(second.scene.chapterId ?? '') ?? Number.MAX_SAFE_INTEGER)
+      return (chapterOrder.get(sceneChapters.get(first.id)?.chapterId ?? '') ?? Number.MAX_SAFE_INTEGER)
+        - (chapterOrder.get(sceneChapters.get(second.id)?.chapterId ?? '') ?? Number.MAX_SAFE_INTEGER)
         || first.scene.order - second.scene.order;
     }
     const degreeDifference = (adjacency.get(second.id)?.size ?? 0) - (adjacency.get(first.id)?.size ?? 0);
@@ -48,6 +50,7 @@ function entitySort(project: ContinuumProject, adjacency: Map<string, Set<string
 
 export function createWorldLayout(project: ContinuumProject): Record<string, XYPosition> {
   const adjacency = new Map(project.entities.map((entity) => [entity.id, new Set<string>()]));
+  const sceneChapters = getSceneChapterResolutions(project);
 
   for (const relationship of project.relationships) {
     connect(adjacency, relationship.sourceId, relationship.targetId);
@@ -55,7 +58,7 @@ export function createWorldLayout(project: ContinuumProject): Record<string, XYP
 
   for (const entity of project.entities) {
     if (!isStoryScene(entity)) continue;
-    connect(adjacency, entity.scene.chapterId, entity.id);
+    connect(adjacency, sceneChapters.get(entity.id)?.chapterId, entity.id);
     connect(adjacency, entity.id, entity.scene.povCharacterId);
     connect(adjacency, entity.id, entity.scene.locationId);
     entity.scene.participantIds.forEach((characterId) => connect(adjacency, entity.id, characterId));

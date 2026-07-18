@@ -35,6 +35,7 @@ export interface ChapterDetails {
 export interface SceneDetails {
   order: number;
   chapterId?: string;
+  chapterInheritanceBlocked?: boolean;
   povCharacterId?: string;
   locationId?: string;
   participantIds: string[];
@@ -93,6 +94,19 @@ export interface ContinuumProject {
   relationships: StoryRelationship[];
 }
 
+export type SceneChapterResolutionMode = 'manual' | 'inherited' | 'unassigned' | 'ambiguous';
+
+export interface SceneChapterResolution {
+  sceneId: string;
+  chapterId?: string;
+  mode: SceneChapterResolutionMode;
+  sourceSceneIds: string[];
+  conflictingChapterIds: string[];
+}
+
+export const chapterMembershipPrefix = 'chapter-membership_';
+export const chapterInheritedPrefix = 'chapter-inherited_';
+
 const id = (prefix: string) => `${prefix}_${crypto.randomUUID()}`;
 const slug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'chapter';
 
@@ -106,6 +120,7 @@ const defaultChapterDetails = (order: number): ChapterDetails => ({
 
 const defaultSceneDetails = (order: number): SceneDetails => ({
   order,
+  chapterInheritanceBlocked: false,
   participantIds: [],
   purpose: '',
   conflict: '',
@@ -130,18 +145,140 @@ export function getChapters(project: ContinuumProject): StoryChapter[] {
   return project.entities.filter(isStoryChapter).sort((a, b) => a.chapter.order - b.chapter.order);
 }
 
+function connectScene(adjacency: Map<string, Set<string>>, firstId: string, secondId: string) {
+  adjacency.get(firstId)?.add(secondId);
+  adjacency.get(secondId)?.add(firstId);
+}
+
+export function getSceneChapterResolutions(project: ContinuumProject): Map<string, SceneChapterResolution> {
+  const scenes = project.entities.filter(isStoryScene);
+  const sceneById = new Map(scenes.map((scene) => [scene.id, scene]));
+  const validChapterIds = new Set(getChapters(project).map((chapter) => chapter.id));
+  const adjacency = new Map(scenes.map((scene) => [scene.id, new Set<string>()]));
+
+  for (const relationship of project.relationships) {
+    if (sceneById.has(relationship.sourceId) && sceneById.has(relationship.targetId)) {
+      connectScene(adjacency, relationship.sourceId, relationship.targetId);
+    }
+  }
+
+  const results = new Map<string, SceneChapterResolution>();
+  const visited = new Set<string>();
+
+  for (const scene of scenes) {
+    if (visited.has(scene.id)) continue;
+    const componentIds: string[] = [];
+    const queue = [scene.id];
+    visited.add(scene.id);
+
+    while (queue.length) {
+      const currentId = queue.shift()!;
+      componentIds.push(currentId);
+      for (const neighborId of adjacency.get(currentId) ?? []) {
+        if (!visited.has(neighborId)) {
+          visited.add(neighborId);
+          queue.push(neighborId);
+        }
+      }
+    }
+
+    const manualAnchors = componentIds
+      .map((sceneId) => sceneById.get(sceneId)!)
+      .filter((candidate) => candidate.scene.chapterId && validChapterIds.has(candidate.scene.chapterId));
+    const distinctChapterIds = [...new Set(manualAnchors.map((candidate) => candidate.scene.chapterId!))];
+
+    for (const sceneId of componentIds) {
+      const candidate = sceneById.get(sceneId)!;
+      const manualChapterId = candidate.scene.chapterId && validChapterIds.has(candidate.scene.chapterId)
+        ? candidate.scene.chapterId
+        : undefined;
+
+      if (manualChapterId) {
+        results.set(sceneId, {
+          sceneId,
+          chapterId: manualChapterId,
+          mode: 'manual',
+          sourceSceneIds: [sceneId],
+          conflictingChapterIds: [],
+        });
+        continue;
+      }
+
+      if (candidate.scene.chapterInheritanceBlocked) {
+        results.set(sceneId, {
+          sceneId,
+          mode: 'unassigned',
+          sourceSceneIds: [],
+          conflictingChapterIds: [],
+        });
+        continue;
+      }
+
+      if (distinctChapterIds.length === 1) {
+        const inheritedChapterId = distinctChapterIds[0];
+        results.set(sceneId, {
+          sceneId,
+          chapterId: inheritedChapterId,
+          mode: 'inherited',
+          sourceSceneIds: manualAnchors
+            .filter((anchor) => anchor.scene.chapterId === inheritedChapterId)
+            .map((anchor) => anchor.id),
+          conflictingChapterIds: [],
+        });
+        continue;
+      }
+
+      if (distinctChapterIds.length > 1) {
+        results.set(sceneId, {
+          sceneId,
+          mode: 'ambiguous',
+          sourceSceneIds: manualAnchors.map((anchor) => anchor.id),
+          conflictingChapterIds: distinctChapterIds,
+        });
+        continue;
+      }
+
+      results.set(sceneId, {
+        sceneId,
+        mode: 'unassigned',
+        sourceSceneIds: [],
+        conflictingChapterIds: [],
+      });
+    }
+  }
+
+  return results;
+}
+
+export function getSceneChapterResolution(project: ContinuumProject, sceneId: string): SceneChapterResolution {
+  return getSceneChapterResolutions(project).get(sceneId) ?? {
+    sceneId,
+    mode: 'unassigned',
+    sourceSceneIds: [],
+    conflictingChapterIds: [],
+  };
+}
+
 export function getScenesForChapter(project: ContinuumProject, chapterId?: string): StoryScene[] {
+  const resolutions = getSceneChapterResolutions(project);
+  const chapterOrder = new Map(getChapters(project).map((chapter) => [chapter.id, chapter.chapter.order]));
+
   return project.entities
     .filter(isStoryScene)
-    .filter((scene) => !chapterId || scene.scene.chapterId === chapterId)
-    .sort((a, b) => {
-      const chapterOrder = (id?: string) => getChapters(project).find((chapter) => chapter.id === id)?.chapter.order ?? Number.MAX_SAFE_INTEGER;
-      return chapterOrder(a.scene.chapterId) - chapterOrder(b.scene.chapterId) || a.scene.order - b.scene.order;
+    .filter((scene) => !chapterId || resolutions.get(scene.id)?.chapterId === chapterId)
+    .sort((first, second) => {
+      const firstChapterId = resolutions.get(first.id)?.chapterId;
+      const secondChapterId = resolutions.get(second.id)?.chapterId;
+      return (chapterOrder.get(firstChapterId ?? '') ?? Number.MAX_SAFE_INTEGER)
+        - (chapterOrder.get(secondChapterId ?? '') ?? Number.MAX_SAFE_INTEGER)
+        || first.scene.order - second.scene.order
+        || first.name.localeCompare(second.name);
     });
 }
 
 export function getChapterForScene(project: ContinuumProject, scene: StoryScene): StoryChapter | undefined {
-  return getChapters(project).find((chapter) => chapter.id === scene.scene.chapterId);
+  const chapterId = getSceneChapterResolution(project, scene.id).chapterId;
+  return getChapters(project).find((chapter) => chapter.id === chapterId);
 }
 
 export function getChapterRelatedEntities(project: ContinuumProject, chapterId: string): StoryEntity[] {
@@ -154,9 +291,19 @@ export function getChapterRelatedEntities(project: ContinuumProject, chapterId: 
     scene.scene.participantIds.forEach((participantId) => relatedIds.add(participantId));
   }
 
-  for (const relationship of project.relationships) {
-    if (relatedIds.has(relationship.sourceId)) relatedIds.add(relationship.targetId);
-    if (relatedIds.has(relationship.targetId)) relatedIds.add(relationship.sourceId);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const relationship of project.relationships) {
+      if (relatedIds.has(relationship.sourceId) && !relatedIds.has(relationship.targetId)) {
+        relatedIds.add(relationship.targetId);
+        changed = true;
+      }
+      if (relatedIds.has(relationship.targetId) && !relatedIds.has(relationship.sourceId)) {
+        relatedIds.add(relationship.sourceId);
+        changed = true;
+      }
+    }
   }
 
   return project.entities.filter((entity) => relatedIds.has(entity.id));
@@ -169,6 +316,7 @@ export function normalizeProject(project: ContinuumProject): ContinuumProject {
     links: entity.links ?? [],
   }));
 
+  const hadChapterEntities = normalizedEntities.some((entity) => entity.type === 'chapter');
   const chapters: StoryChapter[] = normalizedEntities
     .filter((entity) => entity.type === 'chapter')
     .map((entity, index) => ({
@@ -215,11 +363,11 @@ export function normalizeProject(project: ContinuumProject): ContinuumProject {
     const legacyLabel = raw?.chapter?.trim();
     let chapterId = raw?.chapterId;
 
-    if (!chapterId || !chapters.some((chapter) => chapter.id === chapterId)) {
-      const chapter = legacyLabel
-        ? ensureLegacyChapter(legacyLabel, chapters.length + 1)
-        : chapters[0] ?? ensureLegacyChapter('Chapter 1', 1);
-      chapterId = chapter.id;
+    if (chapterId && !chapters.some((chapter) => chapter.id === chapterId)) chapterId = undefined;
+    if (!chapterId && legacyLabel) {
+      chapterId = ensureLegacyChapter(legacyLabel, chapters.length + 1).id;
+    } else if (!chapterId && !hadChapterEntities) {
+      chapterId = (chapters[0] ?? ensureLegacyChapter('Chapter 1', 1)).id;
     }
 
     return {
@@ -229,6 +377,7 @@ export function normalizeProject(project: ContinuumProject): ContinuumProject {
         ...defaultSceneDetails(index + 1),
         ...raw,
         chapterId,
+        chapterInheritanceBlocked: raw?.chapterInheritanceBlocked ?? false,
         participantIds: raw?.participantIds ?? [],
       },
     };
@@ -380,17 +529,23 @@ export function projectToFlow(project: ContinuumProject): { nodes: Node[]; edges
     type: 'straight',
   }));
 
+  const resolutions = getSceneChapterResolutions(project);
   const chapterEdges: Edge[] = project.entities
     .filter(isStoryScene)
-    .filter((scene) => Boolean(scene.scene.chapterId))
-    .map((scene) => ({
-      id: `chapter-membership_${scene.id}`,
-      source: scene.scene.chapterId!,
+    .map((scene) => ({ scene, resolution: resolutions.get(scene.id) }))
+    .filter(({ resolution }) => Boolean(resolution?.chapterId))
+    .map(({ scene, resolution }) => ({
+      id: `${resolution!.mode === 'inherited' ? chapterInheritedPrefix : chapterMembershipPrefix}${scene.id}`,
+      source: resolution!.chapterId!,
       target: scene.id,
-      label: 'contains',
+      label: resolution!.mode === 'inherited' ? 'contains via scenes' : 'contains',
       type: 'straight',
       animated: false,
-      style: { strokeDasharray: '5 4' },
+      data: { chapterMembershipMode: resolution!.mode },
+      style: {
+        strokeDasharray: resolution!.mode === 'inherited' ? '2 5' : '6 5',
+        opacity: resolution!.mode === 'inherited' ? 0.76 : 1,
+      },
     }));
 
   return { nodes, edges: [...chapterEdges, ...explicitEdges] };

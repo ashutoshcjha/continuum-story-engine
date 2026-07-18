@@ -6,12 +6,16 @@ Continuum does **not** generate prose. It organizes chapters, characters, locati
 
 ## Current prototype
 
+- World Library tabs for Characters, Locations, Organizations, Objects, Plot threads, Facts, and World rules
+- Single-item creation plus duplicate-aware bulk CSV/JSON import and export
 - First-class chapters with objectives, opening states, closing states, and chapter-level ghostwriter direction
-- Scenes assigned and ordered inside chapters
+- Manual and inherited scene membership inside chapters
+- Scene-to-scene relationships can carry unassigned scenes into an unambiguous chapter hierarchy
 - Chapter workspace that correlates scenes, world entities, relationships, and the writing brief
 - Chapter-scoped storyboard and ghostwriter brief views
-- Visual world graph with connectable story objects and derived Chapter → contains → Scene edges
-- Smooth local canvas movement with optimized image thumbnails
+- Visual world graph with smooth relationships and distinct manual/inherited Chapter → Scene edges
+- Automatic World arrangement and drag-to-delete
+- Direct editing inside Storyboard, Brief, Chapters, and Library views
 - Images attached to any node and embedded inside the local project file
 - Labeled external links attached to any node
 - IndexedDB autosave on the local machine
@@ -28,7 +32,7 @@ Requires Node.js 22 or newer.
 ```bash
 git clone https://github.com/ashutoshcjha/continuum-story-engine.git
 cd continuum-story-engine
-git switch agent/chapter-workspaces
+git switch agent/hierarchical-chapters-library
 npm install
 npm run dev
 ```
@@ -48,4 +52,7 @@ The browser keeps an automatic recovery copy in IndexedDB. The permanent portabl
 
 Uploaded images are optimized locally and encoded directly into the `.continuum` file so the project remains portable and does not depend on the original image path. External links remain ordinary `http` or `https` references.
 
-See [`docs/FILE_FORMAT.md`](docs/FILE_FORMAT.md) for the first file-format contract.
+See:
+
+- [`docs/FILE_FORMAT.md`](docs/FILE_FORMAT.md) for the editable project contract
+- [`docs/LIBRARY_IMPORT.md`](docs/LIBRARY_IMPORT.md) for bulk CSV/JSON interchange

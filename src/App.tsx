@@ -6,11 +6,22 @@ import { EditableBrief, EditableStoryboard } from './EditableViews';
 import { loadLastLocalProject, saveLocalProject } from './db';
 import { prepareStoryImage } from './imageProcessing';
 import { exportProject, exportStoryboardHtml, importProject } from './io';
+import { LibraryWorkspace } from './LibraryWorkspace';
 import {
+  applyLibraryImport,
+  type LibraryEntityType,
+  type LibraryImportCandidate,
+  type LibraryImportResult,
+} from './libraryIO';
+import {
+  chapterInheritedPrefix,
+  chapterMembershipPrefix,
   createEmptyProject,
   createEntity,
   createSampleProject,
+  getChapterForScene,
   getChapters,
+  getSceneChapterResolution,
   getScenesForChapter,
   isStoryChapter,
   isStoryScene,
@@ -26,7 +37,7 @@ import { RelationshipInspector } from './RelationshipInspector';
 import { WorldCanvas } from './WorldCanvas';
 import { createWorldLayout } from './worldLayout';
 
-type View = 'world' | 'chapters' | 'storyboard' | 'brief';
+type View = 'library' | 'world' | 'chapters' | 'storyboard' | 'brief';
 
 const entityLabels: Record<EntityType, string> = {
   chapter: 'Chapter',
@@ -84,7 +95,7 @@ function EntityInspector({
       <aside className="inspector empty-panel">
         <span>Selection</span>
         <h2>Choose an object</h2>
-        <p>Select a chapter, scene, relationship, card, or node to edit it.</p>
+        <p>Select a chapter, scene, relationship, card, or library item to edit it.</p>
       </aside>
     );
   }
@@ -103,6 +114,16 @@ function EntityInspector({
   const chapters = getChapters(project);
   const images = entity.images ?? [];
   const links = entity.links ?? [];
+  const chapterResolution = scene ? getSceneChapterResolution(project, scene.id) : undefined;
+  const resolvedChapter = chapterResolution?.chapterId
+    ? chapters.find((item) => item.id === chapterResolution.chapterId)
+    : undefined;
+  const sourceSceneNames = chapterResolution?.sourceSceneIds
+    .map((sceneId) => project.entities.find((item) => item.id === sceneId)?.name)
+    .filter((name): name is string => Boolean(name)) ?? [];
+  const conflictingChapters = chapterResolution?.conflictingChapterIds
+    .map((chapterId) => chapters.find((item) => item.id === chapterId)?.name)
+    .filter((name): name is string => Boolean(name)) ?? [];
 
   const addImages = async (files: FileList | null) => {
     if (!files?.length) return;
@@ -241,7 +262,7 @@ function EntityInspector({
         </div>
       )}
 
-      {scene && (
+      {scene && chapterResolution && (
         <div className="scene-fields">
           <div className="two-fields">
             <label className="field">
@@ -250,12 +271,47 @@ function EntityInspector({
             </label>
             <label className="field">
               <span>Chapter</span>
-              <select value={scene.scene.chapterId ?? ''} onChange={(event) => patchScene({ chapterId: event.target.value || undefined })}>
-                <option value="">Not assigned</option>
+              <select
+                value={scene.scene.chapterId ?? (scene.scene.chapterInheritanceBlocked ? '__blocked__' : '__inherit__')}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  if (value === '__inherit__') {
+                    patchScene({ chapterId: undefined, chapterInheritanceBlocked: false });
+                  } else if (value === '__blocked__') {
+                    patchScene({ chapterId: undefined, chapterInheritanceBlocked: true });
+                  } else {
+                    patchScene({ chapterId: value || undefined, chapterInheritanceBlocked: false });
+                  }
+                }}
+              >
+                <option value="__inherit__">
+                  {chapterResolution.mode === 'inherited' && resolvedChapter
+                    ? `Use scene hierarchy — ${resolvedChapter.name}`
+                    : 'Use scene hierarchy'}
+                </option>
+                <option value="__blocked__">Keep unassigned</option>
                 {chapters.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
               </select>
             </label>
           </div>
+          {chapterResolution.mode === 'inherited' && resolvedChapter && (
+            <div className="chapter-resolution-note is-inherited">
+              <b>Inherited chapter</b>
+              <p>{resolvedChapter.name}, through {sourceSceneNames.length ? sourceSceneNames.join(', ') : 'linked scenes'}.</p>
+            </div>
+          )}
+          {chapterResolution.mode === 'ambiguous' && (
+            <div className="chapter-resolution-note is-warning">
+              <b>Hierarchy conflict</b>
+              <p>Linked scenes are anchored in {conflictingChapters.join(' and ')}. Choose a chapter manually or keep this scene unassigned.</p>
+            </div>
+          )}
+          {scene.scene.chapterInheritanceBlocked && (
+            <div className="chapter-resolution-note">
+              <b>Inheritance disabled</b>
+              <p>This scene stays unassigned even when it is linked to scenes in a chapter.</p>
+            </div>
+          )}
           <label className="field">
             <span>POV character</span>
             <select
@@ -300,7 +356,15 @@ function EntityInspector({
   );
 }
 
-const membershipPrefix = 'chapter-membership_';
+function isChapterMembershipRelationship(relationshipId?: string): boolean {
+  return Boolean(relationshipId?.startsWith(chapterMembershipPrefix) || relationshipId?.startsWith(chapterInheritedPrefix));
+}
+
+function membershipSceneId(relationshipId?: string): string | undefined {
+  if (relationshipId?.startsWith(chapterMembershipPrefix)) return relationshipId.slice(chapterMembershipPrefix.length);
+  if (relationshipId?.startsWith(chapterInheritedPrefix)) return relationshipId.slice(chapterInheritedPrefix.length);
+  return undefined;
+}
 
 export default function App() {
   const [project, setProject] = useState<ContinuumProject>(() => createSampleProject());
@@ -340,9 +404,11 @@ export default function App() {
 
   const selected = project.entities.find((entity) => entity.id === selectedId);
   const selectedRelationship: StoryRelationship | undefined = project.relationships.find((relationship) => relationship.id === selectedRelationshipId);
-  const selectedMembershipScene = selectedRelationshipId?.startsWith(membershipPrefix)
-    ? project.entities.find((entity): entity is StoryScene => entity.id === selectedRelationshipId.slice(membershipPrefix.length) && isStoryScene(entity))
+  const selectedMembershipSceneId = membershipSceneId(selectedRelationshipId);
+  const selectedMembershipScene = selectedMembershipSceneId
+    ? project.entities.find((entity): entity is StoryScene => entity.id === selectedMembershipSceneId && isStoryScene(entity))
     : undefined;
+  const selectedMembershipInherited = Boolean(selectedRelationshipId?.startsWith(chapterInheritedPrefix));
 
   const clearSelection = () => {
     setSelectedId(undefined);
@@ -360,7 +426,10 @@ export default function App() {
     setSelectedId(entityId);
     setSelectedRelationshipId(undefined);
     if (entity && isStoryChapter(entity)) setSelectedChapterId(entity.id);
-    if (entity && isStoryScene(entity) && entity.scene.chapterId) setSelectedChapterId(entity.scene.chapterId);
+    if (entity && isStoryScene(entity)) {
+      const chapter = getChapterForScene(project, entity);
+      if (chapter) setSelectedChapterId(chapter.id);
+    }
   };
 
   const selectRelationship = (relationshipId: string) => {
@@ -408,6 +477,7 @@ export default function App() {
     if (isStoryScene(entity)) {
       const chapterId = selectedChapterId ?? getChapters(project)[0]?.id;
       entity.scene.chapterId = chapterId;
+      entity.scene.chapterInheritanceBlocked = false;
       entity.scene.order = getScenesForChapter(project, chapterId).length + 1;
       if (chapterId) setSelectedChapterId(chapterId);
       setView('storyboard');
@@ -421,6 +491,14 @@ export default function App() {
     setProject((current) => ({ ...current, entities: [...current.entities, entity] }));
     setSelectedId(entity.id);
     setSelectedRelationshipId(undefined);
+  };
+
+  const addLibraryEntity = (type: LibraryEntityType) => addEntity(type);
+
+  const applyLibraryRecords = (candidates: LibraryImportCandidate[], updateMatches: boolean): LibraryImportResult => {
+    const result = applyLibraryImport(project, candidates, updateMatches);
+    setProject(result.project);
+    return result;
   };
 
   const createCharacterForScene = (sceneId: string, name: string) => {
@@ -462,7 +540,7 @@ export default function App() {
     if (!isStoryChapter(entity)) return undefined;
     if (getChapters(project).length === 1) return 'A project must keep at least one chapter.';
     const sceneCount = getScenesForChapter(project, entity.id).length;
-    if (sceneCount > 0) return `Move or delete the ${sceneCount} scene${sceneCount === 1 ? '' : 's'} in this chapter before deleting it.`;
+    if (sceneCount > 0) return `Move, detach, or delete the ${sceneCount} scene${sceneCount === 1 ? '' : 's'} in this chapter before deleting it.`;
     return undefined;
   };
 
@@ -533,13 +611,20 @@ export default function App() {
   };
 
   const deleteRelationship = (relationshipId: string) => {
-    if (relationshipId.startsWith(membershipPrefix)) {
-      const sceneId = relationshipId.slice(membershipPrefix.length);
+    if (isChapterMembershipRelationship(relationshipId)) {
+      const sceneId = membershipSceneId(relationshipId);
       setProject((current) => ({
         ...current,
         entities: current.entities.map((entity) => (
           entity.id === sceneId && isStoryScene(entity)
-            ? { ...entity, scene: { ...entity.scene, chapterId: undefined } }
+            ? {
+              ...entity,
+              scene: {
+                ...entity.scene,
+                chapterId: undefined,
+                chapterInheritanceBlocked: true,
+              },
+            }
             : entity
         )),
       }));
@@ -552,6 +637,14 @@ export default function App() {
     setSelectedRelationshipId(undefined);
   };
 
+  const viewLabels: Record<View, string> = {
+    library: 'Library',
+    world: 'World',
+    chapters: 'Chapters',
+    storyboard: 'Storyboard',
+    brief: 'Brief',
+  };
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -560,10 +653,8 @@ export default function App() {
           <div><b>Continuum</b><span>Story Engine</span></div>
         </div>
         <nav>
-          {(['world', 'chapters', 'storyboard', 'brief'] as View[]).map((item) => (
-            <button key={item} className={view === item ? 'active' : ''} onClick={() => setView(item)}>
-              {item === 'world' ? 'World' : item === 'chapters' ? 'Chapters' : item === 'storyboard' ? 'Storyboard' : 'Brief'}
-            </button>
+          {(['library', 'world', 'chapters', 'storyboard', 'brief'] as View[]).map((item) => (
+            <button key={item} className={view === item ? 'active' : ''} onClick={() => setView(item)}>{viewLabels[item]}</button>
           ))}
         </nav>
         <div className="top-actions">
@@ -622,6 +713,15 @@ export default function App() {
       </aside>
 
       <main className="workspace">
+        {view === 'library' && (
+          <LibraryWorkspace
+            project={project}
+            onAddEntity={addLibraryEntity}
+            onSelectEntity={selectEntity}
+            onUpdateEntity={updateEntity}
+            onApplyImport={applyLibraryRecords}
+          />
+        )}
         {view === 'world' && (
           <WorldCanvas
             project={project}
@@ -674,6 +774,7 @@ export default function App() {
           project={project}
           relationship={selectedRelationship}
           membershipScene={selectedMembershipScene}
+          membershipInherited={selectedMembershipInherited}
           onUpdateLabel={updateRelationshipLabel}
           onDelete={deleteRelationship}
           onSelectEntity={selectEntity}

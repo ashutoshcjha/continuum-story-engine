@@ -1,0 +1,30 @@
+{
+  "format": "continuum-library",
+  "formatVersion": 1,
+  "entities": [
+    {
+      "type": "character",
+      "name": "Maya Chen",
+      "summary": "Systems engineer and reluctant investigator.",
+      "notes": "Driven by accuracy; distrusts political pressure.",
+      "tags": ["protagonist", "engineer"],
+      "links": []
+    },
+    {
+      "type": "location",
+      "name": "Olympus Reactor",
+      "summary": "Restricted power complex beneath the colony.",
+      "notes": "The interior damage contradicts the public report.",
+      "tags": ["critical"],
+      "links": []
+    },
+    {
+      "type": "plot-thread",
+      "name": "Reactor sabotage",
+      "summary": "Who altered the containment system, and why?",
+      "notes": "Introduced early and resolved near the final act.",
+      "tags": ["mystery"],
+      "links": []
+    }
+  ]
+}
