@@ -1,3 +1,3 @@
 # Continuum Story Engine
 
-Local-first visual story architecture for creators and human ghostwriters.
+Continuum is a local-first visual workspace for complex stories.
