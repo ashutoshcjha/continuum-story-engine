@@ -1,6 +1,7 @@
 import type { KeyboardEvent } from 'react';
 import { ChapterTabs } from './ChapterWorkspace';
-import { InlineEdit } from './InlineEdit';
+import { InlineEdit, InlineSelect } from './InlineEdit';
+import { SceneCharacterEditor } from './SceneCharacterEditor';
 import {
   getChapters,
   getScenesForChapter,
@@ -47,11 +48,18 @@ export function EditableStoryboard({
   onSelectChapter,
   onSelectEntity,
   onUpdateEntity,
-}: SharedViewProps & { onSelectEntity: (entityId: string) => void }) {
+  onCreateCharacter,
+}: SharedViewProps & {
+  onSelectEntity: (entityId: string) => void;
+  onCreateCharacter: (sceneId: string, name: string) => void;
+}) {
   const chapters = getChapters(project);
   const chapter = chapters.find((item) => item.id === selectedChapterId) ?? chapters[0];
   const scenes = chapter ? getScenesForChapter(project, chapter.id) : [];
-  const entityName = (id?: string) => project.entities.find((entity) => entity.id === id)?.name ?? 'Not set';
+  const characters = project.entities.filter((entity) => entity.type === 'character');
+  const locations = project.entities.filter((entity) => entity.type === 'location');
+  const characterOptions = characters.map((character) => ({ value: character.id, label: character.name }));
+  const locationOptions = locations.map((location) => ({ value: location.id, label: location.name }));
 
   return (
     <section className="storyboard">
@@ -79,7 +87,7 @@ export function EditableStoryboard({
             />
           </p>
         )}
-        <span className="inline-edit-hint">Double-click text to edit · Ctrl/⌘ + Enter saves multiline fields</span>
+        <span className="inline-edit-hint">Double-click text or selections to edit · Ctrl/⌘ + Enter saves multiline fields</span>
       </div>
 
       <div className="scene-grid">
@@ -123,8 +131,40 @@ export function EditableStoryboard({
               />
             </p>
             <dl>
-              <dt>POV</dt><dd>{entityName(scene.scene.povCharacterId)}</dd>
-              <dt>Location</dt><dd>{entityName(scene.scene.locationId)}</dd>
+              <dt>POV</dt>
+              <dd>
+                <InlineSelect
+                  value={scene.scene.povCharacterId ?? ''}
+                  options={characterOptions}
+                  placeholder="Choose POV"
+                  ariaLabel="POV character"
+                  onCommit={(povCharacterId) => updateSceneDetails(scene, {
+                    povCharacterId: povCharacterId || undefined,
+                    participantIds: povCharacterId && !scene.scene.participantIds.includes(povCharacterId)
+                      ? [...scene.scene.participantIds, povCharacterId]
+                      : scene.scene.participantIds,
+                  }, onUpdateEntity)}
+                />
+              </dd>
+              <dt>Location</dt>
+              <dd>
+                <InlineSelect
+                  value={scene.scene.locationId ?? ''}
+                  options={locationOptions}
+                  placeholder="Choose location"
+                  ariaLabel="Scene location"
+                  onCommit={(locationId) => updateSceneDetails(scene, { locationId: locationId || undefined }, onUpdateEntity)}
+                />
+              </dd>
+              <dt>Characters</dt>
+              <dd className="scene-cast-cell">
+                <SceneCharacterEditor
+                  scene={scene}
+                  characters={characters}
+                  onUpdateScene={(changes) => updateSceneDetails(scene, changes, onUpdateEntity)}
+                  onCreateCharacter={onCreateCharacter}
+                />
+              </dd>
               <dt>Movement</dt>
               <dd className="emotion-inline">
                 <InlineEdit

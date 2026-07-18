@@ -1,10 +1,11 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Background,
   ConnectionLineType,
   Controls,
   Handle,
   MarkerType,
+  Panel,
   Position,
   ReactFlow,
   useNodesState,
@@ -12,6 +13,7 @@ import {
   type Edge,
   type NodeProps,
   type NodeTypes,
+  type ReactFlowInstance,
 } from '@xyflow/react';
 import type { ContinuumProject, EntityType } from './model';
 import { projectToFlow } from './model';
@@ -66,6 +68,16 @@ interface WorldCanvasProps {
   onMoveEntity: (id: string, position: { x: number; y: number }) => void;
   onCreateRelationship: (sourceId: string, targetId: string, label: string) => void;
   onDeleteRelationship: (relationshipId: string) => void;
+  onArrangeWorld: () => void;
+  onRequestDeleteEntity: (entityId: string) => boolean;
+}
+
+type PointerEventLike = MouseEvent | TouchEvent;
+
+function pointerCoordinates(event: PointerEventLike): { clientX: number; clientY: number } | undefined {
+  if ('clientX' in event) return { clientX: event.clientX, clientY: event.clientY };
+  const touch = event.touches[0] ?? event.changedTouches[0];
+  return touch ? { clientX: touch.clientX, clientY: touch.clientY } : undefined;
 }
 
 export function WorldCanvas({
@@ -78,10 +90,17 @@ export function WorldCanvas({
   onMoveEntity,
   onCreateRelationship,
   onDeleteRelationship,
+  onArrangeWorld,
+  onRequestDeleteEntity,
 }: WorldCanvasProps) {
   const flow = useMemo(() => projectToFlow(project), [project]);
   const [nodes, setNodes, onNodesChange] = useNodesState(flow.nodes);
   const [isMoving, setIsMoving] = useState(false);
+  const [draggingNodeId, setDraggingNodeId] = useState<string>();
+  const [isOverDeleteTarget, setIsOverDeleteTarget] = useState(false);
+  const deleteTargetRef = useRef<HTMLDivElement>(null);
+  const dragStartRef = useRef<{ id: string; position: { x: number; y: number } } | undefined>(undefined);
+  const flowInstanceRef = useRef<ReactFlowInstance | null>(null);
 
   const edges = useMemo<Edge[]>(() => flow.edges.map((edge) => {
     const isMembership = edge.id.startsWith('chapter-membership_');
@@ -127,12 +146,30 @@ export function WorldCanvas({
     onCreateRelationship(connection.source, connection.target, label);
   }, [onCreateRelationship]);
 
+  const isPointInsideDeleteTarget = (event: PointerEventLike) => {
+    const point = pointerCoordinates(event);
+    const bounds = deleteTargetRef.current?.getBoundingClientRect();
+    return Boolean(point && bounds
+      && point.clientX >= bounds.left
+      && point.clientX <= bounds.right
+      && point.clientY >= bounds.top
+      && point.clientY <= bounds.bottom);
+  };
+
+  const arrangeAndFit = () => {
+    onArrangeWorld();
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      flowInstanceRef.current?.fitView({ padding: 0.16, duration: 450 });
+    }));
+  };
+
   return (
     <ReactFlow
-      className={`world-flow ${isMoving ? 'is-moving' : ''}`}
+      className={`world-flow ${isMoving ? 'is-moving' : ''} ${draggingNodeId ? 'is-dragging-node' : ''}`}
       nodes={nodes}
       edges={edges}
       nodeTypes={nodeTypes}
+      onInit={(instance) => { flowInstanceRef.current = instance; }}
       onNodesChange={onNodesChange}
       onNodeClick={(_, node) => onSelectEntity(node.id)}
       onEdgeClick={(event, edge) => {
@@ -140,13 +177,32 @@ export function WorldCanvas({
         onSelectRelationship(edge.id);
       }}
       onPaneClick={onClearSelection}
-      onNodeDragStart={() => setIsMoving(true)}
-      onNodeDragStop={(_, node) => {
+      onNodeDragStart={(_, node) => {
+        setIsMoving(true);
+        setDraggingNodeId(node.id);
+        dragStartRef.current = { id: node.id, position: { ...node.position } };
+      }}
+      onNodeDrag={(event) => setIsOverDeleteTarget(isPointInsideDeleteTarget(event))}
+      onNodeDragStop={(event, node) => {
+        const droppedOnDelete = isPointInsideDeleteTarget(event);
+        if (droppedOnDelete) {
+          const deleted = onRequestDeleteEntity(node.id);
+          if (!deleted && dragStartRef.current?.id === node.id) {
+            const originalPosition = dragStartRef.current.position;
+            setNodes((current) => current.map((item) => (
+              item.id === node.id ? { ...item, position: originalPosition } : item
+            )));
+          }
+        } else {
+          onMoveEntity(node.id, node.position);
+        }
         setIsMoving(false);
-        onMoveEntity(node.id, node.position);
+        setDraggingNodeId(undefined);
+        setIsOverDeleteTarget(false);
+        dragStartRef.current = undefined;
       }}
       onMoveStart={() => setIsMoving(true)}
-      onMoveEnd={() => setIsMoving(false)}
+      onMoveEnd={() => { if (!draggingNodeId) setIsMoving(false); }}
       onConnect={handleConnect}
       onEdgesDelete={(deletedEdges) => deletedEdges.forEach((edge) => onDeleteRelationship(edge.id))}
       fitView
@@ -163,6 +219,18 @@ export function WorldCanvas({
     >
       <Background gap={22} size={1} />
       <Controls showInteractive={false} />
+      <Panel position="top-right" className="world-layout-panel">
+        <button type="button" onClick={arrangeAndFit}>Arrange world</button>
+      </Panel>
+      <Panel position="bottom-center" className="world-delete-panel">
+        <div
+          ref={deleteTargetRef}
+          className={`world-delete-target ${draggingNodeId ? 'is-visible' : ''} ${isOverDeleteTarget ? 'is-over' : ''}`}
+        >
+          <b>⌫</b>
+          <span>{isOverDeleteTarget ? 'Release to delete' : 'Drag entity here to delete'}</span>
+        </div>
+      </Panel>
     </ReactFlow>
   );
 }

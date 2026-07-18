@@ -16,6 +16,20 @@ interface InlineEditProps {
   ariaLabel?: string;
 }
 
+export interface InlineSelectOption {
+  value: string;
+  label: string;
+}
+
+interface InlineSelectProps {
+  value: string;
+  options: InlineSelectOption[];
+  onCommit: (value: string) => void;
+  placeholder?: string;
+  className?: string;
+  ariaLabel?: string;
+}
+
 export function InlineEdit({
   value,
   onCommit,
@@ -129,6 +143,83 @@ export function InlineEdit({
       }}
     >
       {isEmpty ? placeholder : value}
+    </span>
+  );
+}
+
+export function InlineSelect({
+  value,
+  options,
+  onCommit,
+  placeholder = 'Double-click to choose',
+  className = '',
+  ariaLabel,
+}: InlineSelectProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const selectRef = useRef<HTMLSelectElement>(null);
+  const selectedLabel = options.find((option) => option.value === value)?.label;
+
+  useEffect(() => {
+    if (!isEditing) return;
+    selectRef.current?.focus();
+  }, [isEditing]);
+
+  const beginEditing = (event?: MouseEvent<HTMLElement>) => {
+    event?.preventDefault();
+    event?.stopPropagation();
+    setIsEditing(true);
+  };
+
+  if (isEditing) {
+    return (
+      <span className={`inline-edit inline-select is-editing ${className}`.trim()}>
+        <select
+          ref={selectRef}
+          className="inline-edit-control"
+          value={value}
+          aria-label={ariaLabel ?? placeholder}
+          onChange={(event) => {
+            const nextValue = event.target.value;
+            setIsEditing(false);
+            if (nextValue !== value) onCommit(nextValue);
+          }}
+          onBlur={() => setIsEditing(false)}
+          onKeyDown={(event) => {
+            event.stopPropagation();
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              setIsEditing(false);
+            }
+          }}
+          onClick={(event) => event.stopPropagation()}
+          onDoubleClick={(event) => event.stopPropagation()}
+        >
+          <option value="">{placeholder}</option>
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className={`inline-edit inline-select ${selectedLabel ? '' : 'is-empty'} ${className}`.trim()}
+      role="button"
+      tabIndex={0}
+      title="Double-click to choose"
+      aria-label={`${ariaLabel ?? 'Selection'}. Double-click or press Enter to choose.`}
+      onDoubleClick={beginEditing}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === 'F2') {
+          event.preventDefault();
+          event.stopPropagation();
+          setIsEditing(true);
+        }
+      }}
+    >
+      {selectedLabel ?? placeholder}
     </span>
   );
 }
