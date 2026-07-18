@@ -1,3 +1,4 @@
+import { InlineEdit } from './InlineEdit';
 import {
   getChapterRelatedEntities,
   getChapters,
@@ -5,6 +6,7 @@ import {
   type ContinuumProject,
   type EntityType,
   type StoryChapter,
+  type StoryEntity,
 } from './model';
 
 const entityLabels: Record<EntityType, string> = {
@@ -55,19 +57,37 @@ function ChapterHeader({
   relatedCount,
   onOpenStoryboard,
   onOpenBrief,
+  onUpdateEntity,
 }: {
   chapter: StoryChapter;
   sceneCount: number;
   relatedCount: number;
   onOpenStoryboard: () => void;
   onOpenBrief: () => void;
+  onUpdateEntity: (entity: StoryEntity) => void;
 }) {
   return (
     <header className="chapter-hero">
       <div>
         <span className="eyebrow">Chapter {chapter.chapter.order}</span>
-        <h1>{chapter.name}</h1>
-        <p>{chapter.summary || 'Add a concise description of this chapter’s narrative movement.'}</p>
+        <h1>
+          <InlineEdit
+            value={chapter.name}
+            placeholder="Name this chapter"
+            ariaLabel="Chapter name"
+            onCommit={(name) => onUpdateEntity({ ...chapter, name })}
+          />
+        </h1>
+        <p>
+          <InlineEdit
+            value={chapter.summary}
+            multiline
+            placeholder="Double-click to add a concise description of this chapter’s narrative movement"
+            ariaLabel="Chapter summary"
+            onCommit={(summary) => onUpdateEntity({ ...chapter, summary })}
+          />
+        </p>
+        <span className="inline-edit-hint">Double-click chapter text to edit it in place</span>
       </div>
       <div className="chapter-actions">
         <button onClick={onOpenStoryboard}>Open storyboard</button>
@@ -89,6 +109,7 @@ export function ChapterWorkspace({
   onSelectEntity,
   onOpenStoryboard,
   onOpenBrief,
+  onUpdateEntity,
 }: {
   project: ContinuumProject;
   selectedChapterId?: string;
@@ -96,6 +117,7 @@ export function ChapterWorkspace({
   onSelectEntity: (entityId: string) => void;
   onOpenStoryboard: () => void;
   onOpenBrief: () => void;
+  onUpdateEntity: (entity: StoryEntity) => void;
 }) {
   const chapters = getChapters(project);
   const chapter = chapters.find((item) => item.id === selectedChapterId) ?? chapters[0];
@@ -117,6 +139,10 @@ export function ChapterWorkspace({
     (result[entity.type] ??= []).push(entity);
     return result;
   }, {});
+
+  const patchChapter = (changes: Partial<StoryChapter['chapter']>) => {
+    onUpdateEntity({ ...chapter, chapter: { ...chapter.chapter, ...changes } });
+  };
 
   return (
     <section className="chapter-workspace">
@@ -144,6 +170,7 @@ export function ChapterWorkspace({
           relatedCount={relatedWorldEntities.length}
           onOpenStoryboard={onOpenStoryboard}
           onOpenBrief={onOpenBrief}
+          onUpdateEntity={onUpdateEntity}
         />
 
         <div className="chapter-detail-grid">
@@ -172,11 +199,52 @@ export function ChapterWorkspace({
           <section className="chapter-panel chapter-brief-card">
             <header><div><span>Writing contract</span><h2>Chapter brief</h2></div></header>
             <dl>
-              <div><dt>Opening state</dt><dd>{chapter.chapter.openingState || 'Not defined'}</dd></div>
-              <div><dt>Chapter objective</dt><dd>{chapter.chapter.objective || 'Not defined'}</dd></div>
-              <div><dt>Closing state</dt><dd>{chapter.chapter.closingState || 'Not defined'}</dd></div>
+              <div>
+                <dt>Opening state</dt>
+                <dd>
+                  <InlineEdit
+                    value={chapter.chapter.openingState}
+                    multiline
+                    placeholder="Double-click to define the opening state"
+                    ariaLabel="Opening state"
+                    onCommit={(openingState) => patchChapter({ openingState })}
+                  />
+                </dd>
+              </div>
+              <div>
+                <dt>Chapter objective</dt>
+                <dd>
+                  <InlineEdit
+                    value={chapter.chapter.objective}
+                    multiline
+                    placeholder="Double-click to define the chapter objective"
+                    ariaLabel="Chapter objective"
+                    onCommit={(objective) => patchChapter({ objective })}
+                  />
+                </dd>
+              </div>
+              <div>
+                <dt>Closing state</dt>
+                <dd>
+                  <InlineEdit
+                    value={chapter.chapter.closingState}
+                    multiline
+                    placeholder="Double-click to define the closing state"
+                    ariaLabel="Closing state"
+                    onCommit={(closingState) => patchChapter({ closingState })}
+                  />
+                </dd>
+              </div>
             </dl>
-            {chapter.chapter.ghostwriterNotes && <blockquote>{chapter.chapter.ghostwriterNotes}</blockquote>}
+            <blockquote>
+              <InlineEdit
+                value={chapter.chapter.ghostwriterNotes}
+                multiline
+                placeholder="Double-click to add chapter direction"
+                ariaLabel="Chapter direction"
+                onCommit={(ghostwriterNotes) => patchChapter({ ghostwriterNotes })}
+              />
+            </blockquote>
             <button onClick={onOpenBrief}>Review full brief →</button>
           </section>
 
