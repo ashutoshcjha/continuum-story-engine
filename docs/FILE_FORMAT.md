@@ -43,7 +43,7 @@ A chapter is a first-class entity:
 
 ## Scenes and chapter membership
 
-A scene belongs to a chapter through `scene.chapterId` and has an order within that chapter:
+A scene can have a manual chapter assignment through `scene.chapterId`:
 
 ```json
 {
@@ -52,6 +52,7 @@ A scene belongs to a chapter through `scene.chapterId` and has an order within t
   "name": "The broken relay",
   "scene": {
     "chapterId": "chapter_...",
+    "chapterInheritanceBlocked": false,
     "order": 2,
     "povCharacterId": "character_maya",
     "locationId": "location_ridge",
@@ -69,13 +70,40 @@ A scene belongs to a chapter through `scene.chapterId` and has an order within t
 }
 ```
 
-Continuum derives a protected visual relationship:
+Continuum derives chapter membership in two ways.
+
+### Manual membership
+
+When `chapterId` is present and valid:
 
 ```text
 Chapter → contains → Scene
 ```
 
-That edge is not duplicated in the `relationships` array. `chapterId` is the source of truth for chapter membership, while `relationships` stores author-defined connections among story objects.
+### Inherited membership
+
+When a scene has no manual `chapterId`, Continuum examines explicit relationships between scenes as an undirected scene hierarchy.
+
+An unassigned scene inherits a chapter when its connected scene component contains exactly one distinct manual chapter anchor:
+
+```text
+Chapter 1 → contains → Scene 1
+Scene 1 → leads to → Scene 2
+
+Therefore:
+Chapter 1 → contains via scenes → Scene 2
+```
+
+Rules:
+
+- A manual `chapterId` always wins.
+- Inheritance can travel through multiple scene-to-scene links.
+- If linked scenes are manually anchored in more than one chapter, unassigned scenes in that component are marked ambiguous and are not assigned automatically.
+- `chapterInheritanceBlocked: true` keeps the scene intentionally unassigned even if its scene links would otherwise provide a chapter.
+- Deleting a manual or inherited chapter arrow clears the manual chapter and sets `chapterInheritanceBlocked: true`.
+- Choosing **Use scene hierarchy** in the scene inspector clears the block and allows the derived assignment again.
+
+Derived chapter edges are not duplicated in the `relationships` array. The array stores author-defined connections, while chapter membership is resolved from scene fields and scene-to-scene relationships.
 
 Legacy version-1 files that used a free-text scene chapter label are normalized during import. Continuum creates matching chapter entities and assigns the scenes without discarding the original story material.
 
@@ -83,11 +111,16 @@ Legacy version-1 files that used a free-text scene chapter label are normalized 
 
 Relationships connect any two entities with a human-readable label. Chapter correlation views include:
 
-- chapter membership derived from `chapterId`
+- manual chapter membership derived from `chapterId`
+- inherited chapter membership derived from scene-to-scene relationships
 - direct chapter relationships
 - scene relationships
 - POV, location, and participant references
-- one-hop world entities connected to chapter scenes
+- connected world entities associated with chapter scenes
+
+## World Library interchange
+
+Bulk Character, Location, Organization, Object, Plot thread, Fact, and World rule interchange uses a separate `continuum-library` JSON or CSV format. See [`LIBRARY_IMPORT.md`](LIBRARY_IMPORT.md).
 
 ## Future compatibility
 
