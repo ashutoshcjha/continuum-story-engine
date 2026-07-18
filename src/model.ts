@@ -10,6 +10,18 @@ export type EntityType =
   | 'world-rule'
   | 'scene';
 
+export interface StoryImage {
+  id: string;
+  name: string;
+  dataUrl: string;
+}
+
+export interface ExternalLink {
+  id: string;
+  label: string;
+  url: string;
+}
+
 export interface StoryEntity {
   id: string;
   type: EntityType;
@@ -17,6 +29,8 @@ export interface StoryEntity {
   summary: string;
   notes: string;
   tags: string[];
+  images: StoryImage[];
+  links: ExternalLink[];
   position: XYPosition;
   scene?: SceneDetails;
 }
@@ -65,6 +79,17 @@ export interface ContinuumProject {
 
 const id = (prefix: string) => `${prefix}_${crypto.randomUUID()}`;
 
+export function normalizeProject(project: ContinuumProject): ContinuumProject {
+  return {
+    ...project,
+    entities: project.entities.map((entity) => ({
+      ...entity,
+      images: entity.images ?? [],
+      links: entity.links ?? [],
+    })),
+  };
+}
+
 export function createEntity(type: EntityType, count: number): StoryEntity {
   const base: StoryEntity = {
     id: id(type),
@@ -73,6 +98,8 @@ export function createEntity(type: EntityType, count: number): StoryEntity {
     summary: '',
     notes: '',
     tags: [],
+    images: [],
+    links: [],
     position: { x: 80 + (count % 4) * 230, y: 80 + Math.floor(count / 4) * 160 },
   };
 
@@ -123,21 +150,21 @@ export function createSampleProject(): ContinuumProject {
   const maya: StoryEntity = {
     id: 'character_maya', type: 'character', name: 'Maya Chen',
     summary: 'Systems engineer sent to audit the colony failure.', notes: 'Driven by accuracy; distrusts political pressure.',
-    tags: ['protagonist'], position: { x: 90, y: 90 },
+    tags: ['protagonist'], images: [], links: [], position: { x: 90, y: 90 },
   };
   const elias: StoryEntity = {
     id: 'character_elias', type: 'character', name: 'Elias Vale',
     summary: 'Colony administrator protecting a hidden chain of decisions.', notes: 'Believes concealment prevents a larger catastrophe.',
-    tags: ['administrator'], position: { x: 420, y: 90 },
+    tags: ['administrator'], images: [], links: [], position: { x: 420, y: 90 },
   };
   const reactor: StoryEntity = {
     id: 'location_reactor', type: 'location', name: 'Olympus Reactor',
-    summary: 'Restricted power complex beneath the colony.', notes: '', tags: ['critical'], position: { x: 250, y: 320 },
+    summary: 'Restricted power complex beneath the colony.', notes: '', tags: ['critical'], images: [], links: [], position: { x: 250, y: 320 },
   };
   const thread: StoryEntity = {
     id: 'thread_sabotage', type: 'plot-thread', name: 'Reactor sabotage',
     summary: 'Who altered the containment system, and why?', notes: 'Introduced early; resolved near the final act.',
-    tags: ['mystery'], position: { x: 610, y: 320 },
+    tags: ['mystery'], images: [], links: [], position: { x: 610, y: 320 },
   };
   const scene = createEntity('scene', 0) as StoryScene;
   scene.id = 'scene_reactor_inspection';
@@ -179,7 +206,13 @@ export function projectToFlow(project: ContinuumProject): { nodes: Node[]; edges
     id: entity.id,
     position: entity.position,
     type: 'story',
-    data: { label: entity.name, entityType: entity.type, summary: entity.summary },
+    data: {
+      label: entity.name,
+      entityType: entity.type,
+      summary: entity.summary,
+      imageUrl: entity.images?.[0]?.dataUrl,
+      linkCount: entity.links?.length ?? 0,
+    },
   }));
   const edges: Edge[] = project.relationships.map((relationship) => ({
     id: relationship.id,
