@@ -72,6 +72,14 @@ interface WorldCanvasProps {
   onRequestDeleteEntity: (entityId: string) => boolean;
 }
 
+type PointerEventLike = MouseEvent | TouchEvent;
+
+function pointerCoordinates(event: PointerEventLike): { clientX: number; clientY: number } | undefined {
+  if ('clientX' in event) return { clientX: event.clientX, clientY: event.clientY };
+  const touch = event.touches[0] ?? event.changedTouches[0];
+  return touch ? { clientX: touch.clientX, clientY: touch.clientY } : undefined;
+}
+
 export function WorldCanvas({
   project,
   selectedEntityId,
@@ -91,7 +99,7 @@ export function WorldCanvas({
   const [draggingNodeId, setDraggingNodeId] = useState<string>();
   const [isOverDeleteTarget, setIsOverDeleteTarget] = useState(false);
   const deleteTargetRef = useRef<HTMLDivElement>(null);
-  const dragStartRef = useRef<{ id: string; position: { x: number; y: number } }>();
+  const dragStartRef = useRef<{ id: string; position: { x: number; y: number } } | undefined>(undefined);
   const flowInstanceRef = useRef<ReactFlowInstance | null>(null);
 
   const edges = useMemo<Edge[]>(() => flow.edges.map((edge) => {
@@ -138,9 +146,10 @@ export function WorldCanvas({
     onCreateRelationship(connection.source, connection.target, label);
   }, [onCreateRelationship]);
 
-  const isPointInsideDeleteTarget = (point: { clientX: number; clientY: number }) => {
+  const isPointInsideDeleteTarget = (event: PointerEventLike) => {
+    const point = pointerCoordinates(event);
     const bounds = deleteTargetRef.current?.getBoundingClientRect();
-    return Boolean(bounds
+    return Boolean(point && bounds
       && point.clientX >= bounds.left
       && point.clientX <= bounds.right
       && point.clientY >= bounds.top
