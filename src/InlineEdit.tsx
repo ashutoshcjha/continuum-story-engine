@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type KeyboardEvent,
+  type MouseEvent,
+} from 'react';
 
 interface InlineEditProps {
   value: string;
@@ -19,7 +26,8 @@ export function InlineEdit({
 }: InlineEditProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(value);
-  const controlRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (!isEditing) setDraft(value);
@@ -27,10 +35,10 @@ export function InlineEdit({
 
   useEffect(() => {
     if (!isEditing) return;
-    const control = controlRef.current;
+    const control = multiline ? textareaRef.current : inputRef.current;
     control?.focus();
     if (control) control.setSelectionRange(control.value.length, control.value.length);
-  }, [isEditing]);
+  }, [isEditing, multiline]);
 
   const beginEditing = (event?: MouseEvent<HTMLElement>) => {
     event?.preventDefault();
@@ -51,6 +59,10 @@ export function InlineEdit({
     setIsEditing(false);
   };
 
+  const handleChange = (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    setDraft(event.target.value);
+  };
+
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     event.stopPropagation();
     if (event.key === 'Escape') {
@@ -65,21 +77,35 @@ export function InlineEdit({
   };
 
   if (isEditing) {
-    const commonProps = {
-      ref: controlRef as never,
-      className: 'inline-edit-control',
-      value: draft,
-      'aria-label': ariaLabel ?? placeholder,
-      onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setDraft(event.target.value),
-      onBlur: commit,
-      onKeyDown: handleKeyDown,
-      onClick: (event: MouseEvent<HTMLElement>) => event.stopPropagation(),
-      onDoubleClick: (event: MouseEvent<HTMLElement>) => event.stopPropagation(),
-    };
-
     return (
       <span className={`inline-edit is-editing ${multiline ? 'is-multiline' : ''} ${className}`.trim()}>
-        {multiline ? <textarea {...commonProps} rows={3} /> : <input {...commonProps} type="text" />}
+        {multiline ? (
+          <textarea
+            ref={textareaRef}
+            className="inline-edit-control"
+            value={draft}
+            rows={3}
+            aria-label={ariaLabel ?? placeholder}
+            onChange={handleChange}
+            onBlur={commit}
+            onKeyDown={handleKeyDown}
+            onClick={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => event.stopPropagation()}
+          />
+        ) : (
+          <input
+            ref={inputRef}
+            className="inline-edit-control"
+            type="text"
+            value={draft}
+            aria-label={ariaLabel ?? placeholder}
+            onChange={handleChange}
+            onBlur={commit}
+            onKeyDown={handleKeyDown}
+            onClick={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => event.stopPropagation()}
+          />
+        )}
       </span>
     );
   }
