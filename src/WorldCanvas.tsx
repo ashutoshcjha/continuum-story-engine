@@ -1,12 +1,15 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Background,
+  ConnectionLineType,
   Controls,
   Handle,
+  MarkerType,
   Position,
   ReactFlow,
   useNodesState,
   type Connection,
+  type Edge,
   type NodeProps,
   type NodeTypes,
 } from '@xyflow/react';
@@ -55,26 +58,68 @@ const nodeTypes: NodeTypes = { story: StoryNode };
 
 interface WorldCanvasProps {
   project: ContinuumProject;
-  selectedId?: string;
-  onSelect: (id: string) => void;
+  selectedEntityId?: string;
+  selectedRelationshipId?: string;
+  onSelectEntity: (id: string) => void;
+  onSelectRelationship: (id: string) => void;
+  onClearSelection: () => void;
   onMoveEntity: (id: string, position: { x: number; y: number }) => void;
   onCreateRelationship: (sourceId: string, targetId: string, label: string) => void;
+  onDeleteRelationship: (relationshipId: string) => void;
 }
 
 export function WorldCanvas({
   project,
-  selectedId,
-  onSelect,
+  selectedEntityId,
+  selectedRelationshipId,
+  onSelectEntity,
+  onSelectRelationship,
+  onClearSelection,
   onMoveEntity,
   onCreateRelationship,
+  onDeleteRelationship,
 }: WorldCanvasProps) {
   const flow = useMemo(() => projectToFlow(project), [project]);
   const [nodes, setNodes, onNodesChange] = useNodesState(flow.nodes);
   const [isMoving, setIsMoving] = useState(false);
 
+  const edges = useMemo<Edge[]>(() => flow.edges.map((edge) => {
+    const isMembership = edge.id.startsWith('chapter-membership_');
+    const stroke = isMembership ? '#78918b' : '#607a76';
+    return {
+      ...edge,
+      type: 'default',
+      pathOptions: { curvature: 0.35 },
+      selected: edge.id === selectedRelationshipId,
+      deletable: true,
+      interactionWidth: 28,
+      className: isMembership ? 'chapter-membership-edge' : 'relationship-edge',
+      style: {
+        ...edge.style,
+        stroke,
+        strokeWidth: edge.id === selectedRelationshipId ? 2.8 : 1.8,
+        strokeDasharray: isMembership ? '6 5' : undefined,
+      },
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: stroke,
+        width: 18,
+        height: 18,
+      },
+      labelBgPadding: [7, 4] as [number, number],
+      labelBgBorderRadius: 6,
+      labelBgStyle: { fill: '#f8f8f4', fillOpacity: 0.94 },
+      labelStyle: { fill: '#53645f', fontSize: 10, fontWeight: 600 },
+    };
+  }), [flow.edges, selectedRelationshipId]);
+
   useEffect(() => {
-    setNodes(flow.nodes.map((node) => ({ ...node, selected: node.id === selectedId })));
-  }, [flow.nodes, selectedId, setNodes]);
+    setNodes(flow.nodes.map((node) => ({
+      ...node,
+      selected: node.id === selectedEntityId,
+      deletable: false,
+    })));
+  }, [flow.nodes, selectedEntityId, setNodes]);
 
   const handleConnect = useCallback((connection: Connection) => {
     if (!connection.source || !connection.target) return;
@@ -86,10 +131,15 @@ export function WorldCanvas({
     <ReactFlow
       className={`world-flow ${isMoving ? 'is-moving' : ''}`}
       nodes={nodes}
-      edges={flow.edges}
+      edges={edges}
       nodeTypes={nodeTypes}
       onNodesChange={onNodesChange}
-      onNodeClick={(_, node) => onSelect(node.id)}
+      onNodeClick={(_, node) => onSelectEntity(node.id)}
+      onEdgeClick={(event, edge) => {
+        event.stopPropagation();
+        onSelectRelationship(edge.id);
+      }}
+      onPaneClick={onClearSelection}
       onNodeDragStart={() => setIsMoving(true)}
       onNodeDragStop={(_, node) => {
         setIsMoving(false);
@@ -98,6 +148,7 @@ export function WorldCanvas({
       onMoveStart={() => setIsMoving(true)}
       onMoveEnd={() => setIsMoving(false)}
       onConnect={handleConnect}
+      onEdgesDelete={(deletedEdges) => deletedEdges.forEach((edge) => onDeleteRelationship(edge.id))}
       fitView
       fitViewOptions={{ padding: 0.2, duration: 0 }}
       minZoom={0.2}
@@ -106,7 +157,9 @@ export function WorldCanvas({
       onlyRenderVisibleElements
       elevateNodesOnSelect={false}
       zoomOnDoubleClick={false}
-      deleteKeyCode={null}
+      edgesReconnectable={false}
+      deleteKeyCode={['Backspace', 'Delete']}
+      connectionLineType={ConnectionLineType.Bezier}
     >
       <Background gap={22} size={1} />
       <Controls showInteractive={false} />
