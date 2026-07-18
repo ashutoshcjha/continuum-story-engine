@@ -88,7 +88,8 @@ export function WorldCanvas({
     const stroke = isMembership ? '#78918b' : '#607a76';
     return {
       ...edge,
-      type: 'bezier',
+      type: 'default',
+      pathOptions: { curvature: 0.35 },
       selected: edge.id === selectedRelationshipId,
       deletable: true,
       interactionWidth: 28,
@@ -105,7 +106,7 @@ export function WorldCanvas({
         width: 18,
         height: 18,
       },
-      labelBgPadding: [7, 4],
+      labelBgPadding: [7, 4] as [number, number],
       labelBgBorderRadius: 6,
       labelBgStyle: { fill: '#f8f8f4', fillOpacity: 0.94 },
       labelStyle: { fill: '#53645f', fontSize: 10, fontWeight: 600 },
@@ -113,7 +114,11 @@ export function WorldCanvas({
   }), [flow.edges, selectedRelationshipId]);
 
   useEffect(() => {
-    setNodes(flow.nodes.map((node) => ({ ...node, selected: node.id === selectedEntityId })));
+    setNodes(flow.nodes.map((node) => ({
+      ...node,
+      selected: node.id === selectedEntityId,
+      deletable: false,
+    })));
   }, [flow.nodes, selectedEntityId, setNodes]);
 
   const handleConnect = useCallback((connection: Connection) => {
@@ -152,7 +157,6 @@ export function WorldCanvas({
       onlyRenderVisibleElements
       elevateNodesOnSelect={false}
       zoomOnDoubleClick={false}
-      nodesDeletable={false}
       edgesReconnectable={false}
       deleteKeyCode={['Backspace', 'Delete']}
       connectionLineType={ConnectionLineType.Bezier}
