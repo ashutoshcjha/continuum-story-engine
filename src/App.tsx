@@ -18,8 +18,10 @@ import {
   type EntityType,
   type StoryChapter,
   type StoryEntity,
+  type StoryRelationship,
   type StoryScene,
 } from './model';
+import { RelationshipInspector } from './RelationshipInspector';
 import { WorldCanvas } from './WorldCanvas';
 
 type View = 'world' | 'chapters' | 'storyboard' | 'brief';
@@ -80,7 +82,7 @@ function EntityInspector({
       <aside className="inspector empty-panel">
         <span>Selection</span>
         <h2>Choose an object</h2>
-        <p>Select a chapter, scene, card, or node to edit its structured story cues.</p>
+        <p>Select a chapter, scene, relationship, card, or node to edit it.</p>
       </aside>
     );
   }
@@ -143,11 +145,16 @@ function EntityInspector({
     setLinkUrl('');
   };
 
+  const requestEntityDeletion = () => {
+    const confirmed = window.confirm(`Delete the ${entityLabels[entity.type].toLowerCase()} “${entity.name}” and all of its story relationships?`);
+    if (confirmed) removeEntity(entity.id);
+  };
+
   return (
     <aside className="inspector">
       <div className="inspector-heading">
         <span>{entityLabels[entity.type]}</span>
-        <button className="danger-link" onClick={() => removeEntity(entity.id)}>Delete</button>
+        <button className="danger-link" onClick={requestEntityDeletion}>Delete entity</button>
       </div>
       <TextField label="Name" value={entity.name} onChange={(name) => patch({ name })} />
       <TextField label="Summary" value={entity.summary} multiline onChange={(summary) => patch({ summary })} />
@@ -387,9 +394,12 @@ function Brief({
   );
 }
 
+const membershipPrefix = 'chapter-membership_';
+
 export default function App() {
   const [project, setProject] = useState<ContinuumProject>(() => createSampleProject());
   const [selectedId, setSelectedId] = useState<string>();
+  const [selectedRelationshipId, setSelectedRelationshipId] = useState<string>();
   const [selectedChapterId, setSelectedChapterId] = useState<string>();
   const [view, setView] = useState<View>('world');
   const [saveState, setSaveState] = useState('Loading local project…');
@@ -423,17 +433,33 @@ export default function App() {
   }, [project]);
 
   const selected = project.entities.find((entity) => entity.id === selectedId);
+  const selectedRelationship: StoryRelationship | undefined = project.relationships.find((relationship) => relationship.id === selectedRelationshipId);
+  const selectedMembershipScene = selectedRelationshipId?.startsWith(membershipPrefix)
+    ? project.entities.find((entity): entity is StoryScene => entity.id === selectedRelationshipId.slice(membershipPrefix.length) && isStoryScene(entity))
+    : undefined;
+
+  const clearSelection = () => {
+    setSelectedId(undefined);
+    setSelectedRelationshipId(undefined);
+  };
 
   const selectChapter = (chapterId: string) => {
     setSelectedChapterId(chapterId);
     setSelectedId(chapterId);
+    setSelectedRelationshipId(undefined);
   };
 
   const selectEntity = (entityId: string) => {
     const entity = project.entities.find((item) => item.id === entityId);
     setSelectedId(entityId);
+    setSelectedRelationshipId(undefined);
     if (entity && isStoryChapter(entity)) setSelectedChapterId(entity.id);
     if (entity && isStoryScene(entity) && entity.scene.chapterId) setSelectedChapterId(entity.scene.chapterId);
+  };
+
+  const selectRelationship = (relationshipId: string) => {
+    setSelectedRelationshipId(relationshipId);
+    setSelectedId(undefined);
   };
 
   const updateProject = (patch: Partial<ContinuumProject>) => {
@@ -475,6 +501,7 @@ export default function App() {
 
     setProject((current) => ({ ...current, entities: [...current.entities, entity] }));
     setSelectedId(entity.id);
+    setSelectedRelationshipId(undefined);
   };
 
   const removeEntity = (id: string) => {
@@ -498,17 +525,49 @@ export default function App() {
       entities: current.entities.filter((item) => item.id !== id),
       relationships: current.relationships.filter((item) => item.sourceId !== id && item.targetId !== id),
     }));
-    setSelectedId(undefined);
+    clearSelection();
   };
 
   const createRelationship = (sourceId: string, targetId: string, label: string) => {
+    const relationshipId = `rel_${crypto.randomUUID()}`;
     setProject((current) => ({
       ...current,
       relationships: [
         ...current.relationships,
-        { id: `rel_${crypto.randomUUID()}`, sourceId, targetId, label },
+        { id: relationshipId, sourceId, targetId, label },
       ],
     }));
+    setSelectedId(undefined);
+    setSelectedRelationshipId(relationshipId);
+  };
+
+  const updateRelationshipLabel = (relationshipId: string, label: string) => {
+    setProject((current) => ({
+      ...current,
+      relationships: current.relationships.map((relationship) => (
+        relationship.id === relationshipId ? { ...relationship, label } : relationship
+      )),
+    }));
+  };
+
+  const deleteRelationship = (relationshipId: string) => {
+    if (relationshipId.startsWith(membershipPrefix)) {
+      const sceneId = relationshipId.slice(membershipPrefix.length);
+      setProject((current) => ({
+        ...current,
+        entities: current.entities.map((entity) => (
+          entity.id === sceneId && isStoryScene(entity)
+            ? { ...entity, scene: { ...entity.scene, chapterId: undefined } }
+            : entity
+        )),
+      }));
+    } else {
+      setProject((current) => ({
+        ...current,
+        relationships: current.relationships.filter((relationship) => relationship.id !== relationshipId),
+      }));
+    }
+    setSelectedRelationshipId(undefined);
   };
 
   return (
@@ -542,7 +601,7 @@ export default function App() {
                 const imported = await importProject(file);
                 setProject(imported);
                 setSelectedChapterId(getChapters(imported)[0]?.id);
-                setSelectedId(undefined);
+                clearSelection();
               } catch (error) {
                 window.alert(error instanceof Error ? error.message : 'Could not open the file.');
               }
@@ -572,7 +631,7 @@ export default function App() {
               const blank = createEmptyProject();
               setProject(blank);
               setSelectedChapterId(getChapters(blank)[0]?.id);
-              setSelectedId(undefined);
+              clearSelection();
             }
           }}
         >
@@ -584,10 +643,14 @@ export default function App() {
         {view === 'world' && (
           <WorldCanvas
             project={project}
-            selectedId={selectedId}
-            onSelect={selectEntity}
+            selectedEntityId={selectedId}
+            selectedRelationshipId={selectedRelationshipId}
+            onSelectEntity={selectEntity}
+            onSelectRelationship={selectRelationship}
+            onClearSelection={clearSelection}
             onMoveEntity={moveEntity}
             onCreateRelationship={createRelationship}
+            onDeleteRelationship={deleteRelationship}
           />
         )}
         {view === 'chapters' && (
@@ -613,7 +676,18 @@ export default function App() {
         )}
       </main>
 
-      <EntityInspector entity={selected} project={project} updateEntity={updateEntity} removeEntity={removeEntity} />
+      {selectedRelationshipId ? (
+        <RelationshipInspector
+          project={project}
+          relationship={selectedRelationship}
+          membershipScene={selectedMembershipScene}
+          onUpdateLabel={updateRelationshipLabel}
+          onDelete={deleteRelationship}
+          onSelectEntity={selectEntity}
+        />
+      ) : (
+        <EntityInspector entity={selected} project={project} updateEntity={updateEntity} removeEntity={removeEntity} />
+      )}
     </div>
   );
 }
