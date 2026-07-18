@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import '@xyflow/react/dist/style.css';
 import './styles.css';
 import { ChapterTabs, ChapterWorkspace } from './ChapterWorkspace';
+import { EditableBrief, EditableStoryboard } from './EditableViews';
 import { loadLastLocalProject, saveLocalProject } from './db';
 import { prepareStoryImage } from './imageProcessing';
 import { exportProject, exportStoryboardHtml, importProject } from './io';
@@ -661,18 +662,26 @@ export default function App() {
             onSelectEntity={selectEntity}
             onOpenStoryboard={() => setView('storyboard')}
             onOpenBrief={() => setView('brief')}
+            onUpdateEntity={updateEntity}
           />
         )}
         {view === 'storyboard' && (
-          <Storyboard
+          <EditableStoryboard
             project={project}
             selectedChapterId={selectedChapterId}
             onSelectChapter={selectChapter}
-            select={selectEntity}
+            onSelectEntity={selectEntity}
+            onUpdateEntity={updateEntity}
           />
         )}
         {view === 'brief' && (
-          <Brief project={project} selectedChapterId={selectedChapterId} onSelectChapter={selectChapter} />
+          <EditableBrief
+            project={project}
+            selectedChapterId={selectedChapterId}
+            onSelectChapter={selectChapter}
+            onUpdateEntity={updateEntity}
+            onUpdateProject={updateProject}
+          />
         )}
       </main>
 
