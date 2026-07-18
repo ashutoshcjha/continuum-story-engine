@@ -19,6 +19,7 @@ import {
   createEntity,
   createSampleProject,
   isStoryScene,
+  normalizeProject,
   projectToFlow,
   type ContinuumProject,
   type EntityType,
@@ -34,13 +35,15 @@ const entityLabels: Record<EntityType, string> = {
 };
 
 function StoryNode({ data, selected }: NodeProps) {
-  const values = data as { label: string; entityType: EntityType; summary: string };
+  const values = data as { label: string; entityType: EntityType; summary: string; imageUrl?: string; linkCount: number };
   return (
     <div className={`story-node story-node--${values.entityType} ${selected ? 'is-selected' : ''}`}>
       <Handle type="target" position={Position.Left} />
+      {values.imageUrl && <img className="node-image" src={values.imageUrl} alt="" />}
       <span className="node-type">{entityLabels[values.entityType]}</span>
       <strong>{values.label}</strong>
       {values.summary && <small>{values.summary}</small>}
+      {values.linkCount > 0 && <span className="node-link-count">↗ {values.linkCount} link{values.linkCount === 1 ? '' : 's'}</span>}
       <Handle type="source" position={Position.Right} />
     </div>
   );
@@ -60,18 +63,62 @@ function EntityInspector({ entity, project, updateEntity, removeEntity }: {
   updateEntity: (entity: StoryEntity) => void;
   removeEntity: (id: string) => void;
 }) {
+  const imageRef = useRef<HTMLInputElement>(null);
+  const [linkLabel, setLinkLabel] = useState('');
+  const [linkUrl, setLinkUrl] = useState('');
   if (!entity) return <aside className="inspector empty-panel"><span>Selection</span><h2>Choose an object</h2><p>Select a card or node to edit its structured story cues.</p></aside>;
   const patch = (changes: Partial<StoryEntity>) => updateEntity({ ...entity, ...changes });
   const scene = isStoryScene(entity) ? entity : undefined;
   const patchScene = (changes: Partial<StoryScene['scene']>) => scene && updateEntity({ ...scene, scene: { ...scene.scene, ...changes } });
   const characters = project.entities.filter((item) => item.type === 'character');
   const locations = project.entities.filter((item) => item.type === 'location');
+  const images = entity.images ?? [];
+  const links = entity.links ?? [];
+
+  const addImages = async (files: FileList | null) => {
+    if (!files?.length) return;
+    const accepted = Array.from(files).filter((file) => file.type.startsWith('image/'));
+    const additions = await Promise.all(accepted.map((file) => new Promise<{ id: string; name: string; dataUrl: string }>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve({ id: `image_${crypto.randomUUID()}`, name: file.name, dataUrl: String(reader.result) });
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    })));
+    patch({ images: [...images, ...additions] });
+  };
+
+  const addLink = () => {
+    const raw = linkUrl.trim();
+    if (!raw) return;
+    let url: URL;
+    try { url = new URL(raw); } catch { window.alert('Enter a complete URL such as https://example.com.'); return; }
+    if (!['http:', 'https:'].includes(url.protocol)) { window.alert('Only http and https links are supported.'); return; }
+    patch({ links: [...links, { id: `link_${crypto.randomUUID()}`, label: linkLabel.trim() || url.hostname, url: url.toString() }] });
+    setLinkLabel('');
+    setLinkUrl('');
+  };
 
   return <aside className="inspector">
     <div className="inspector-heading"><span>{entityLabels[entity.type]}</span><button className="danger-link" onClick={() => removeEntity(entity.id)}>Delete</button></div>
     <TextField label="Name" value={entity.name} onChange={(name) => patch({ name })} />
     <TextField label="Summary" value={entity.summary} multiline onChange={(summary) => patch({ summary })} />
     <TextField label="Tags (comma separated)" value={entity.tags.join(', ')} onChange={(tags) => patch({ tags: tags.split(',').map((tag) => tag.trim()).filter(Boolean) })} />
+
+    <section className="attachment-section">
+      <div className="attachment-heading"><span>Images</span><button onClick={() => imageRef.current?.click()}>Add image</button></div>
+      <input ref={imageRef} hidden type="file" accept="image/*" multiple onChange={async (event) => { await addImages(event.target.files); event.target.value = ''; }} />
+      {images.length > 0 ? <div className="image-grid">{images.map((image, index) => <figure key={image.id}>
+        <img src={image.dataUrl} alt={image.name} />
+        <figcaption><span>{index === 0 ? 'Cover · ' : ''}{image.name}</span><button onClick={() => patch({ images: images.filter((item) => item.id !== image.id) })}>×</button></figcaption>
+      </figure>)}</div> : <p className="attachment-empty">The first image becomes the node thumbnail and appears in exports.</p>}
+    </section>
+
+    <section className="attachment-section">
+      <div className="attachment-heading"><span>External links</span></div>
+      <div className="link-form"><input aria-label="Link label" placeholder="Label" value={linkLabel} onChange={(event) => setLinkLabel(event.target.value)} /><input aria-label="URL" placeholder="https://…" value={linkUrl} onChange={(event) => setLinkUrl(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') addLink(); }} /><button onClick={addLink}>Add</button></div>
+      {links.length > 0 ? <ul className="link-list">{links.map((link) => <li key={link.id}><a href={link.url} target="_blank" rel="noreferrer">{link.label}</a><button onClick={() => patch({ links: links.filter((item) => item.id !== link.id) })}>×</button></li>)}</ul> : <p className="attachment-empty">Link research, maps, reference pages, playlists, or source material to this node.</p>}
+    </section>
+
     {scene && <div className="scene-fields">
       <div className="two-fields">
         <label className="field"><span>Order</span><input type="number" value={scene.scene.order} onChange={(event) => patchScene({ order: Number(event.target.value) })} /></label>
@@ -97,10 +144,12 @@ function Storyboard({ project, select }: { project: ContinuumProject; select: (i
   const entityName = (id?: string) => project.entities.find((entity) => entity.id === id)?.name ?? 'Not set';
   return <section className="storyboard"><div className="section-intro"><span>Story stream</span><h2>Scene storyboard</h2><p>Arrange the narrative as cues, decisions, reveals, and consequences—not manuscript prose.</p></div>
     <div className="scene-grid">{scenes.map((scene) => <button key={scene.id} className="scene-card" onClick={() => select(scene.id)}>
+      {scene.images?.[0] && <img className="scene-card-image" src={scene.images[0].dataUrl} alt="" />}
       <div className="scene-card-top"><span>{scene.scene.chapter}</span><b>{String(scene.scene.order).padStart(2, '0')}</b></div>
       <h3>{scene.name}</h3><p>{scene.summary || 'Add a one-sentence scene summary.'}</p>
       <dl><dt>POV</dt><dd>{entityName(scene.scene.povCharacterId)}</dd><dt>Location</dt><dd>{entityName(scene.scene.locationId)}</dd><dt>Movement</dt><dd>{scene.scene.emotionalStart || '—'} → {scene.scene.emotionalEnd || '—'}</dd></dl>
       <div className="scene-turn"><span>Turn</span>{scene.scene.turningPoint || 'Define the turning point.'}</div>
+      {(scene.links?.length ?? 0) > 0 && <div className="scene-link-note">↗ {scene.links.length} linked reference{scene.links.length === 1 ? '' : 's'}</div>}
     </button>)}</div>
     {!scenes.length && <div className="empty-canvas">Create your first scene from the left sidebar.</div>}
   </section>;
@@ -109,7 +158,7 @@ function Storyboard({ project, select }: { project: ContinuumProject; select: (i
 function Brief({ project }: { project: ContinuumProject }) {
   const scenes = project.entities.filter(isStoryScene).sort((a, b) => a.scene.order - b.scene.order);
   return <section className="brief"><div className="brief-paper"><span className="eyebrow">Ghostwriter briefing document</span><h1>{project.title}</h1><h2>{project.logline || 'Add a logline to frame the assignment.'}</h2><p className="premise">{project.premise}</p>
-    {scenes.map((scene) => <article key={scene.id}><header><b>Scene {scene.scene.order}</b><span>{scene.scene.chapter}</span></header><h3>{scene.name}</h3><p>{scene.summary}</p><div className="brief-grid"><div><small>Purpose</small>{scene.scene.purpose || '—'}</div><div><small>Conflict</small>{scene.scene.conflict || '—'}</div><div><small>Turning point</small>{scene.scene.turningPoint || '—'}</div><div><small>Outcome</small>{scene.scene.outcome || '—'}</div><div><small>Reveal</small>{scene.scene.reveal || '—'}</div><div><small>Keep concealed</small>{scene.scene.conceal || '—'}</div></div>{scene.scene.ghostwriterNotes && <blockquote><b>Direction</b>{scene.scene.ghostwriterNotes}</blockquote>}</article>)}
+    {scenes.map((scene) => <article key={scene.id}>{scene.images?.[0] && <img className="brief-image" src={scene.images[0].dataUrl} alt="" />}<header><b>Scene {scene.scene.order}</b><span>{scene.scene.chapter}</span></header><h3>{scene.name}</h3><p>{scene.summary}</p><div className="brief-grid"><div><small>Purpose</small>{scene.scene.purpose || '—'}</div><div><small>Conflict</small>{scene.scene.conflict || '—'}</div><div><small>Turning point</small>{scene.scene.turningPoint || '—'}</div><div><small>Outcome</small>{scene.scene.outcome || '—'}</div><div><small>Reveal</small>{scene.scene.reveal || '—'}</div><div><small>Keep concealed</small>{scene.scene.conceal || '—'}</div></div>{scene.scene.ghostwriterNotes && <blockquote><b>Direction</b>{scene.scene.ghostwriterNotes}</blockquote>}{(scene.links?.length ?? 0) > 0 && <div className="brief-links"><b>References</b>{scene.links.map((link) => <a key={link.id} href={link.url} target="_blank" rel="noreferrer">{link.label}</a>)}</div>}</article>)}
   </div></section>;
 }
 
@@ -120,7 +169,7 @@ export default function App() {
   const [saveState, setSaveState] = useState('Loading local project…');
   const importRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { loadLastLocalProject().then((stored) => { if (stored) setProject(stored); setSaveState('Saved locally'); }); }, []);
+  useEffect(() => { loadLastLocalProject().then((stored) => { if (stored) setProject(normalizeProject(stored)); setSaveState('Saved locally'); }); }, []);
   useEffect(() => {
     const handle = window.setTimeout(() => {
       const updated = { ...project, updatedAt: new Date().toISOString() };
