@@ -14,6 +14,7 @@ export interface StoryImage {
   id: string;
   name: string;
   dataUrl: string;
+  thumbnailUrl?: string;
 }
 
 export interface ExternalLink {
@@ -210,7 +211,7 @@ export function projectToFlow(project: ContinuumProject): { nodes: Node[]; edges
       label: entity.name,
       entityType: entity.type,
       summary: entity.summary,
-      imageUrl: entity.images?.[0]?.dataUrl,
+      imageUrl: entity.images?.[0]?.thumbnailUrl ?? entity.images?.[0]?.dataUrl,
       linkCount: entity.links?.length ?? 0,
     },
   }));
@@ -219,7 +220,7 @@ export function projectToFlow(project: ContinuumProject): { nodes: Node[]; edges
     source: relationship.sourceId,
     target: relationship.targetId,
     label: relationship.label,
-    type: 'smoothstep',
+    type: 'straight',
   }));
   return { nodes, edges };
 }
