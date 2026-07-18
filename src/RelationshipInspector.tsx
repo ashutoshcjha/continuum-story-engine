@@ -1,9 +1,17 @@
-import type { ContinuumProject, StoryRelationship, StoryScene } from './model';
+import {
+  chapterInheritedPrefix,
+  chapterMembershipPrefix,
+  getChapterForScene,
+  type ContinuumProject,
+  type StoryRelationship,
+  type StoryScene,
+} from './model';
 
 interface RelationshipInspectorProps {
   project: ContinuumProject;
   relationship?: StoryRelationship;
   membershipScene?: StoryScene;
+  membershipInherited?: boolean;
   onUpdateLabel: (relationshipId: string, label: string) => void;
   onDelete: (relationshipId: string) => void;
   onSelectEntity: (entityId: string) => void;
@@ -13,6 +21,7 @@ export function RelationshipInspector({
   project,
   relationship,
   membershipScene,
+  membershipInherited = false,
   onUpdateLabel,
   onDelete,
   onSelectEntity,
@@ -27,18 +36,19 @@ export function RelationshipInspector({
     );
   }
 
-  const relationshipId = relationship?.id ?? `chapter-membership_${membershipScene!.id}`;
-  const sourceId = relationship?.sourceId ?? membershipScene?.scene.chapterId;
+  const relationshipId = relationship?.id
+    ?? `${membershipInherited ? chapterInheritedPrefix : chapterMembershipPrefix}${membershipScene!.id}`;
+  const sourceId = relationship?.sourceId ?? (membershipScene ? getChapterForScene(project, membershipScene)?.id : undefined);
   const targetId = relationship?.targetId ?? membershipScene?.id;
   const source = project.entities.find((entity) => entity.id === sourceId);
   const target = project.entities.find((entity) => entity.id === targetId);
   const isMembership = Boolean(membershipScene);
-  const label = relationship?.label ?? 'contains';
+  const label = relationship?.label ?? (membershipInherited ? 'contains via scenes' : 'contains');
 
   return (
     <aside className="inspector relationship-inspector">
       <div className="inspector-heading">
-        <span>{isMembership ? 'Chapter relationship' : 'Relationship'}</span>
+        <span>{membershipInherited ? 'Inherited chapter relationship' : isMembership ? 'Chapter relationship' : 'Relationship'}</span>
         <button className="danger-link" onClick={() => onDelete(relationshipId)}>Delete relationship</button>
       </div>
 
@@ -63,10 +73,15 @@ export function RelationshipInspector({
         />
       </label>
 
-      {isMembership ? (
+      {membershipInherited ? (
         <div className="relationship-note">
-          <b>Structural relationship</b>
-          <p>This arrow is generated from the scene’s Chapter field. Deleting it removes the scene from the chapter without deleting either entity.</p>
+          <b>Inherited structural relationship</b>
+          <p>This scene belongs to the chapter because it is linked to another scene with a manual chapter assignment. Deleting this arrow keeps the scene and its links but marks the scene as intentionally unassigned.</p>
+        </div>
+      ) : isMembership ? (
+        <div className="relationship-note">
+          <b>Manual structural relationship</b>
+          <p>This arrow is generated from the scene’s manual Chapter field. Deleting it keeps the scene but marks it as intentionally unassigned, so scene links will not immediately reattach it.</p>
         </div>
       ) : (
         <div className="relationship-note">
