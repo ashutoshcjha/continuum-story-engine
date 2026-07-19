@@ -1,4 +1,6 @@
 import { InlineEdit } from './InlineEdit';
+import { ChapterEffectsSummary } from './SceneEffectsEditor';
+import { getChapterEffects, isEffectRelationship } from './storyLogic';
 import {
   getChapterRelatedEntities,
   getChapters,
@@ -55,6 +57,7 @@ function ChapterHeader({
   chapter,
   sceneCount,
   relatedCount,
+  effectCount,
   onOpenStoryboard,
   onOpenBrief,
   onUpdateEntity,
@@ -62,6 +65,7 @@ function ChapterHeader({
   chapter: StoryChapter;
   sceneCount: number;
   relatedCount: number;
+  effectCount: number;
   onOpenStoryboard: () => void;
   onOpenBrief: () => void;
   onUpdateEntity: (entity: StoryEntity) => void;
@@ -95,8 +99,8 @@ function ChapterHeader({
       </div>
       <dl className="chapter-metrics">
         <div><dt>Scenes</dt><dd>{sceneCount}</dd></div>
+        <div><dt>Story effects</dt><dd>{effectCount}</dd></div>
         <div><dt>Related entities</dt><dd>{relatedCount}</dd></div>
-        <div><dt>Objective</dt><dd>{chapter.chapter.objective ? 'Defined' : 'Missing'}</dd></div>
       </dl>
     </header>
   );
@@ -127,12 +131,15 @@ export function ChapterWorkspace({
   }
 
   const scenes = getScenesForChapter(project, chapter.id);
+  const effects = getChapterEffects(project, chapter.id);
   const related = getChapterRelatedEntities(project, chapter.id);
   const relatedWorldEntities = related.filter((entity) => entity.type !== 'chapter' && entity.type !== 'scene');
   const scopeIds = new Set(related.map((entity) => entity.id));
   const names = new Map(project.entities.map((entity) => [entity.id, entity.name]));
   const relationships = project.relationships.filter(
-    (relationship) => scopeIds.has(relationship.sourceId) && scopeIds.has(relationship.targetId),
+    (relationship) => scopeIds.has(relationship.sourceId)
+      && scopeIds.has(relationship.targetId)
+      && !isEffectRelationship(relationship),
   );
 
   const groups = relatedWorldEntities.reduce<Record<string, typeof relatedWorldEntities>>((result, entity) => {
@@ -167,6 +174,7 @@ export function ChapterWorkspace({
         <ChapterHeader
           chapter={chapter}
           sceneCount={scenes.length}
+          effectCount={effects.length}
           relatedCount={relatedWorldEntities.length}
           onOpenStoryboard={onOpenStoryboard}
           onOpenBrief={onOpenBrief}
@@ -201,51 +209,26 @@ export function ChapterWorkspace({
             <dl>
               <div>
                 <dt>Opening state</dt>
-                <dd>
-                  <InlineEdit
-                    value={chapter.chapter.openingState}
-                    multiline
-                    placeholder="Double-click to define the opening state"
-                    ariaLabel="Opening state"
-                    onCommit={(openingState) => patchChapter({ openingState })}
-                  />
-                </dd>
+                <dd><InlineEdit value={chapter.chapter.openingState} multiline placeholder="Double-click to define the opening state" ariaLabel="Opening state" onCommit={(openingState) => patchChapter({ openingState })} /></dd>
               </div>
               <div>
                 <dt>Chapter objective</dt>
-                <dd>
-                  <InlineEdit
-                    value={chapter.chapter.objective}
-                    multiline
-                    placeholder="Double-click to define the chapter objective"
-                    ariaLabel="Chapter objective"
-                    onCommit={(objective) => patchChapter({ objective })}
-                  />
-                </dd>
+                <dd><InlineEdit value={chapter.chapter.objective} multiline placeholder="Double-click to define the chapter objective" ariaLabel="Chapter objective" onCommit={(objective) => patchChapter({ objective })} /></dd>
               </div>
               <div>
                 <dt>Closing state</dt>
-                <dd>
-                  <InlineEdit
-                    value={chapter.chapter.closingState}
-                    multiline
-                    placeholder="Double-click to define the closing state"
-                    ariaLabel="Closing state"
-                    onCommit={(closingState) => patchChapter({ closingState })}
-                  />
-                </dd>
+                <dd><InlineEdit value={chapter.chapter.closingState} multiline placeholder="Double-click to define the closing state" ariaLabel="Closing state" onCommit={(closingState) => patchChapter({ closingState })} /></dd>
               </div>
             </dl>
             <blockquote>
-              <InlineEdit
-                value={chapter.chapter.ghostwriterNotes}
-                multiline
-                placeholder="Double-click to add chapter direction"
-                ariaLabel="Chapter direction"
-                onCommit={(ghostwriterNotes) => patchChapter({ ghostwriterNotes })}
-              />
+              <InlineEdit value={chapter.chapter.ghostwriterNotes} multiline placeholder="Double-click to add chapter direction" ariaLabel="Chapter direction" onCommit={(ghostwriterNotes) => patchChapter({ ghostwriterNotes })} />
             </blockquote>
             <button onClick={onOpenBrief}>Review full brief →</button>
+          </section>
+
+          <section className="chapter-panel chapter-effects-panel">
+            <header><div><span>Narrative movement</span><h2>Story effects</h2></div><b>{effects.length}</b></header>
+            <ChapterEffectsSummary project={project} chapterId={chapter.id} onSelectEntity={onSelectEntity} />
           </section>
 
           <section className="chapter-panel chapter-entities-panel">
@@ -272,7 +255,7 @@ export function ChapterWorkspace({
           </section>
 
           <section className="chapter-panel chapter-relationships-panel">
-            <header><div><span>Network</span><h2>Relationships in scope</h2></div><b>{relationships.length + scenes.length}</b></header>
+            <header><div><span>Network</span><h2>Custom relationships in scope</h2></div><b>{relationships.length + scenes.length}</b></header>
             <div className="chapter-relationship-list">
               {scenes.map((scene) => (
                 <button key={`contains-${scene.id}`} onClick={() => onSelectEntity(scene.id)}>
