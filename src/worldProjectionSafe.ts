@@ -154,7 +154,7 @@ export function buildWorldProjection(project: ContinuumProject, options: WorldPr
         }
         : entity),
     };
-    return appendPowerResources(project, buildBaseProjection(sanitized, options));
+    return appendPowerResources(project, buildBaseProjection(sanitized, { ...options, showReference: true }));
   }
 
   const effectiveOptions: WorldProjectionOptions = options.lens === 'geography' || options.lens === 'technology'
