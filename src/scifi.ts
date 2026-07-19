@@ -1,4 +1,5 @@
 import {
+  getChapterForScene,
   getChapters,
   getScenesForChapter,
   isStoryScene,
@@ -69,7 +70,7 @@ export interface TechnologyDetails {
 
 export const organizationTypes = ['corporation', 'government', 'intelligence', 'religious', 'cult', 'collective', 'criminal', 'research', 'other'] as const;
 export type OrganizationType = (typeof organizationTypes)[number];
-export const capabilityLevels = ['none', 'low', 'medium', 'high', 'extreme'] as const;
+export const capabilityLevels = ['unknown', 'none', 'low', 'medium', 'high', 'extreme'] as const;
 export type CapabilityLevel = (typeof capabilityLevels)[number];
 export interface OrganizationProfile {
   organizationType: OrganizationType;
@@ -249,20 +250,27 @@ const defaultTravel = (): TravelSegment => ({
   complications: '',
 });
 
-function defaultImportance(entity: StoryEntity): EntityImportance {
+function defaultPresentation(entity: StoryEntity): EntityPresentation {
   const tagText = entity.tags.join(' ').toLowerCase();
-  if (tagText.includes('atlas') || tagText.includes('reference')) return 'reference';
-  if (entity.type === 'chapter' || entity.type === 'scene' || entity.type === 'character' || entity.type === 'plot-thread') return 'core';
-  if (entity.type === 'fact' || entity.type === 'world-rule') return 'supporting';
-  return 'reference';
+  const importance: EntityImportance = tagText.includes('atlas') || tagText.includes('reference')
+    ? 'reference'
+    : ['chapter', 'scene', 'character', 'plot-thread'].includes(entity.type)
+      ? 'core'
+      : ['fact', 'world-rule'].includes(entity.type)
+        ? 'supporting'
+        : 'reference';
+  return {
+    visibility: 'auto',
+    importance,
+    layerHints: inferLayerHints(entity),
+    pinned: false,
+  };
 }
 
 function inferLayerHints(entity: StoryEntity): WorldLens[] {
-  if (entity.type === 'chapter' || entity.type === 'scene' || entity.type === 'character' || entity.type === 'plot-thread') return ['story'];
   if (entity.type === 'location') return ['story', 'geography'];
   if (entity.type === 'organization') return ['story', 'power'];
-  if (entity.type === 'fact') return ['story', 'knowledge'];
-  if (entity.type === 'world-rule') return ['story', 'knowledge'];
+  if (entity.type === 'fact' || entity.type === 'world-rule') return ['story', 'knowledge'];
   if (entity.technology) return ['story', 'technology'];
   return ['story'];
 }
@@ -279,22 +287,24 @@ function inferLocationKind(entity: StoryEntity): LocationKind {
   return 'generic';
 }
 
+function technologyDomainFromText(text: string): TechnologyDomain {
+  if (/(vehicle|craft|ship|maglev|transit|drive)/.test(text)) return 'transport';
+  if (/(oxygen|water|air|habitat|life support)/.test(text)) return 'life-support';
+  if (/(computer|network|yggdrasil|data|quantum)/.test(text)) return 'computing';
+  if (/(surveillance|scanner|sensor)/.test(text)) return 'surveillance';
+  if (/(terraform|nuclear|detonation|greenhouse)/.test(text)) return 'terraforming';
+  if (/(accelerator|collider|research|projector)/.test(text)) return 'research';
+  if (/(power|reactor|energy)/.test(text)) return 'energy';
+  return 'general';
+}
+
 function inferTechnology(entity: StoryEntity): TechnologyDetails | undefined {
-  if (entity.type !== 'object') return entity.technology;
+  if (entity.technology) return entity.technology;
+  if (entity.type !== 'object') return undefined;
   const text = `${entity.name} ${entity.summary} ${entity.notes} ${entity.tags.join(' ')}`.toLowerCase();
-  if (!/(technology|system|vehicle|craft|ship|accelerator|maglev|network|computer|projector|drive|reactor|yggdrasil|mtv|plasma|shield|scanner|satellite|rig)/.test(text)) {
-    return entity.technology;
-  }
-  let domain: TechnologyDomain = 'general';
-  if (/(vehicle|craft|ship|maglev|transit|drive)/.test(text)) domain = 'transport';
-  else if (/(oxygen|water|air|habitat|life support)/.test(text)) domain = 'life-support';
-  else if (/(computer|network|yggdrasil|data|quantum)/.test(text)) domain = 'computing';
-  else if (/(surveillance|scanner|sensor)/.test(text)) domain = 'surveillance';
-  else if (/(terraform|nuclear|detonation|greenhouse)/.test(text)) domain = 'terraforming';
-  else if (/(accelerator|collider|research|projector)/.test(text)) domain = 'research';
-  else if (/(power|reactor|energy)/.test(text)) domain = 'energy';
+  if (!/(technology|system|vehicle|craft|ship|accelerator|maglev|network|computer|projector|drive|reactor|yggdrasil|mtv|plasma|shield|scanner|satellite|rig)/.test(text)) return undefined;
   return {
-    domain,
+    domain: technologyDomainFromText(text),
     purpose: entity.summary,
     operatingPrinciple: '',
     inputs: '',
@@ -307,10 +317,11 @@ function inferTechnology(entity: StoryEntity): TechnologyDetails | undefined {
   };
 }
 
-function inferIdentityProfile(entity: StoryEntity): IdentityProfile | undefined {
-  if (entity.type !== 'character') return entity.identityProfile;
+function inferIdentity(entity: StoryEntity): IdentityProfile | undefined {
+  if (entity.identityProfile) return entity.identityProfile;
+  if (entity.type !== 'character') return undefined;
   const text = `${entity.name} ${entity.summary} ${entity.notes} ${entity.tags.join(' ')}`.toLowerCase();
-  if (!/(robot|automaton|android|artificial intelligence|\bai\b|cyborg|machine)/.test(text)) return entity.identityProfile;
+  if (!/(robot|automaton|android|artificial intelligence|\bai\b|cyborg|machine)/.test(text)) return undefined;
   const identityType: IdentityType = /automaton/.test(text)
     ? 'automaton'
     : /cyborg/.test(text)
@@ -334,65 +345,70 @@ function inferIdentityProfile(entity: StoryEntity): IdentityProfile | undefined 
   };
 }
 
+function normalizeOrganizationProfile(entity: StoryEntity): OrganizationProfile | undefined {
+  if (entity.type !== 'organization') return entity.organizationProfile;
+  return {
+    organizationType: entity.organizationProfile?.organizationType ?? 'other',
+    publicIdentity: entity.organizationProfile?.publicIdentity ?? entity.summary,
+    hiddenIdentity: entity.organizationProfile?.hiddenIdentity ?? '',
+    controlledResources: entity.organizationProfile?.controlledResources ?? [],
+    territoryIds: entity.organizationProfile?.territoryIds ?? [],
+    surveillanceCapability: entity.organizationProfile?.surveillanceCapability ?? 'unknown',
+    militaryCapability: entity.organizationProfile?.militaryCapability ?? 'unknown',
+    dataAccess: entity.organizationProfile?.dataAccess ?? 'unknown',
+    leverageNotes: entity.organizationProfile?.leverageNotes ?? '',
+  };
+}
+
 export function normalizeScifiProject(project: ContinuumProject): ContinuumProject {
-  const entities = project.entities.map((entity) => {
-    const technology = inferTechnology(entity);
-    const presentation: EntityPresentation = {
-      visibility: entity.presentation?.visibility ?? 'auto',
-      importance: entity.presentation?.importance ?? defaultImportance(entity),
-      layerHints: entity.presentation?.layerHints?.length ? entity.presentation.layerHints : inferLayerHints({ ...entity, technology }),
-      pinned: entity.presentation?.pinned ?? false,
-    };
-    const normalized: StoryEntity = {
-      ...entity,
-      presentation,
+  const entities = project.entities.map((original) => {
+    const technology = inferTechnology(original);
+    const base: StoryEntity = {
+      ...original,
       technology,
-      locationProfile: entity.type === 'location'
+      presentation: {
+        ...defaultPresentation({ ...original, technology }),
+        ...(original.presentation ?? {}),
+        layerHints: original.presentation?.layerHints?.length
+          ? original.presentation.layerHints
+          : inferLayerHints({ ...original, technology }),
+      },
+      locationProfile: original.type === 'location'
         ? {
-          kind: entity.locationProfile?.kind ?? inferLocationKind(entity),
-          parentLocationId: entity.locationProfile?.parentLocationId,
-          coordinates: entity.locationProfile?.coordinates ?? '',
-          environmentNotes: entity.locationProfile?.environmentNotes ?? '',
+          kind: original.locationProfile?.kind ?? inferLocationKind(original),
+          parentLocationId: original.locationProfile?.parentLocationId,
+          coordinates: original.locationProfile?.coordinates ?? '',
+          environmentNotes: original.locationProfile?.environmentNotes ?? '',
         }
-        : entity.locationProfile,
-      organizationProfile: entity.type === 'organization'
-        ? {
-          organizationType: entity.organizationProfile?.organizationType ?? 'other',
-          publicIdentity: entity.organizationProfile?.publicIdentity ?? entity.summary,
-          hiddenIdentity: entity.organizationProfile?.hiddenIdentity ?? '',
-          controlledResources: entity.organizationProfile?.controlledResources ?? [],
-          territoryIds: entity.organizationProfile?.territoryIds ?? [],
-          surveillanceCapability: entity.organizationProfile?.surveillanceCapability ?? 'unknown' as CapabilityLevel,
-          militaryCapability: entity.organizationProfile?.militaryCapability ?? 'unknown' as CapabilityLevel,
-          dataAccess: entity.organizationProfile?.dataAccess ?? 'unknown' as CapabilityLevel,
-          leverageNotes: entity.organizationProfile?.leverageNotes ?? '',
-        }
-        : entity.organizationProfile,
-      identityProfile: inferIdentityProfile(entity),
+        : original.locationProfile,
+      organizationProfile: normalizeOrganizationProfile(original),
+      identityProfile: inferIdentity(original),
     };
-    if (isStoryScene(normalized)) {
+
+    if (isStoryScene(base)) {
       return {
-        ...normalized,
+        ...base,
         scene: {
-          ...normalized.scene,
-          environment: { ...defaultEnvironment(), ...(normalized.scene.environment ?? {}) },
-          travel: { ...defaultTravel(), ...(normalized.scene.travel ?? {}) },
+          ...base.scene,
+          environment: { ...defaultEnvironment(), ...(base.scene.environment ?? {}) },
+          travel: { ...defaultTravel(), ...(base.scene.travel ?? {}) },
         },
       };
     }
-    if (normalized.type === 'fact' && normalized.fact) {
+
+    if (base.type === 'fact' && base.fact) {
       return {
-        ...normalized,
+        ...base,
         fact: {
-          ...normalized.fact,
-          factType: normalized.fact.factType ?? (normalized.fact.truthStatus === 'true' ? 'canonical' : 'claim'),
-          confidence: normalized.fact.confidence ?? 'unknown',
-          sourceReliability: normalized.fact.sourceReliability ?? 'unknown',
-          sourceEntityId: normalized.fact.sourceEntityId,
+          ...base.fact,
+          factType: base.fact.factType ?? (base.fact.truthStatus === 'true' ? 'canonical' : 'claim'),
+          confidence: base.fact.confidence ?? 'unknown',
+          sourceReliability: base.fact.sourceReliability ?? 'unknown',
+          sourceEntityId: base.fact.sourceEntityId,
         },
       };
     }
-    return normalized;
+    return base;
   });
 
   return {
@@ -407,12 +423,7 @@ export function normalizeScifiProject(project: ContinuumProject): ContinuumProje
 }
 
 export function presentationOf(entity: StoryEntity): EntityPresentation {
-  return entity.presentation ?? {
-    visibility: 'auto',
-    importance: defaultImportance(entity),
-    layerHints: inferLayerHints(entity),
-    pinned: false,
-  };
+  return entity.presentation ?? defaultPresentation(entity);
 }
 
 export function isTechnologyEntity(entity: StoryEntity): boolean {
@@ -520,8 +531,7 @@ function sceneReferencedIds(project: ContinuumProject, scene: StoryScene): Set<s
 
 export function conceptLoadForChapter(project: ContinuumProject, chapterId: string): ConceptLoad {
   const firstSceneByEntity = new Map<string, string>();
-  const sequence = orderedScenes(project);
-  for (const scene of sequence) {
+  for (const scene of orderedScenes(project)) {
     for (const entityId of sceneReferencedIds(project, scene)) {
       if (!firstSceneByEntity.has(entityId)) firstSceneByEntity.set(entityId, scene.id);
     }
@@ -531,7 +541,6 @@ export function conceptLoadForChapter(project: ContinuumProject, chapterId: stri
     .filter(([, sceneId]) => chapterSceneIds.has(sceneId))
     .map(([entityId]) => entityId);
   const groups: Record<string, number> = {};
-  let score = 0;
   const weights: Record<string, number> = {
     character: 3,
     location: 2,
@@ -542,6 +551,7 @@ export function conceptLoadForChapter(project: ContinuumProject, chapterId: stri
     'world-rule': 1,
     object: 1,
   };
+  let score = 0;
   for (const entityId of entityIds) {
     const entity = project.entities.find((candidate) => candidate.id === entityId);
     if (!entity || entity.type === 'chapter' || entity.type === 'scene') continue;
@@ -555,10 +565,8 @@ export function conceptLoadForChapter(project: ContinuumProject, chapterId: stri
 
 export function sceneAtOrBeforeChapter(project: ContinuumProject, sceneId: string | undefined, chapterId: string | undefined): boolean {
   if (!sceneId || !chapterId) return true;
-  const chapterOrder = new Map(getChapters(project).map((chapter) => [chapter.id, chapter.chapter.order]));
-  const targetOrder = chapterOrder.get(chapterId);
+  const target = getChapters(project).find((chapter) => chapter.id === chapterId);
   const scene = project.entities.find((entity): entity is StoryScene => entity.id === sceneId && isStoryScene(entity));
-  if (!scene || targetOrder === undefined) return true;
-  const sceneChapter = getChapters(project).find((chapter) => getScenesForChapter(project, chapter.id).some((candidate) => candidate.id === scene.id));
-  return sceneChapter ? sceneChapter.chapter.order <= targetOrder : true;
+  const sceneChapter = scene ? getChapterForScene(project, scene) : undefined;
+  return !target || !sceneChapter || sceneChapter.chapter.order <= target.chapter.order;
 }
