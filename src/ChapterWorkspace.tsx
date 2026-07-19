@@ -1,5 +1,6 @@
 import { InlineEdit } from './InlineEdit';
 import { ChapterEffectsSummary } from './SceneEffectsEditor';
+import { ChapterInsights } from './ChapterInsights';
 import { getChapterEffects, isEffectRelationship } from './storyLogic';
 import {
   getChapterRelatedEntities,
@@ -273,6 +274,8 @@ export function ChapterWorkspace({
             </div>
           </section>
         </div>
+
+        <ChapterInsights project={project} chapterId={chapter.id} onSelectEntity={onSelectEntity} />
       </div>
     </section>
   );
