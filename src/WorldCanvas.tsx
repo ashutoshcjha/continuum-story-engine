@@ -18,10 +18,11 @@ import {
 import {
   chapterInheritedPrefix,
   chapterMembershipPrefix,
-  projectToFlow,
   type ContinuumProject,
   type EntityType,
 } from './model';
+import { projectToFlow } from './model';
+import { relationshipKind, type RelationshipKind } from './storyLogic';
 
 const entityLabels: Record<EntityType, string> = {
   chapter: 'Chapter',
@@ -33,6 +34,14 @@ const entityLabels: Record<EntityType, string> = {
   fact: 'Fact',
   'world-rule': 'World rule',
   scene: 'Scene',
+};
+
+const relationshipColors: Record<RelationshipKind, string> = {
+  custom: '#607a76',
+  'scene-thread': '#765b86',
+  'scene-fact': '#5682a0',
+  'scene-rule': '#b88744',
+  'character-fact': '#4f7e79',
 };
 
 const StoryNode = memo(function StoryNode({ data, selected }: NodeProps) {
@@ -107,11 +116,17 @@ export function WorldCanvas({
   const dragStartRef = useRef<{ id: string; position: { x: number; y: number } } | undefined>(undefined);
   const flowInstanceRef = useRef<ReactFlowInstance | null>(null);
 
+  const relationshipsById = useMemo(
+    () => new Map(project.relationships.map((relationship) => [relationship.id, relationship])),
+    [project.relationships],
+  );
+
   const edges = useMemo<Edge[]>(() => flow.edges.map((edge) => {
-    const isManualMembership = edge.id.startsWith(chapterMembershipPrefix);
-    const isInheritedMembership = edge.id.startsWith(chapterInheritedPrefix);
-    const isMembership = isManualMembership || isInheritedMembership;
-    const stroke = isInheritedMembership ? '#9a8a6b' : isManualMembership ? '#78918b' : '#607a76';
+    const isMembership = edge.id.startsWith(chapterMembershipPrefix) || edge.id.startsWith(chapterInheritedPrefix);
+    const inheritedMembership = edge.id.startsWith(chapterInheritedPrefix);
+    const relationship = relationshipsById.get(edge.id);
+    const kind = relationship ? relationshipKind(relationship) : 'custom';
+    const stroke = isMembership ? '#78918b' : relationshipColors[kind];
     return {
       ...edge,
       type: 'default',
@@ -119,16 +134,14 @@ export function WorldCanvas({
       selected: edge.id === selectedRelationshipId,
       deletable: true,
       interactionWidth: 28,
-      className: isInheritedMembership
-        ? 'chapter-inherited-edge'
-        : isManualMembership
-          ? 'chapter-membership-edge'
-          : 'relationship-edge',
+      className: isMembership
+        ? `chapter-membership-edge ${inheritedMembership ? 'is-inherited' : 'is-manual'}`
+        : `relationship-edge relationship-edge--${kind}`,
       style: {
         ...edge.style,
         stroke,
         strokeWidth: edge.id === selectedRelationshipId ? 2.8 : 1.8,
-        strokeDasharray: isInheritedMembership ? '2 5' : isManualMembership ? '6 5' : undefined,
+        strokeDasharray: isMembership ? (inheritedMembership ? '2 5' : '6 5') : undefined,
       },
       markerEnd: {
         type: MarkerType.ArrowClosed,
@@ -139,9 +152,9 @@ export function WorldCanvas({
       labelBgPadding: [7, 4] as [number, number],
       labelBgBorderRadius: 6,
       labelBgStyle: { fill: '#f8f8f4', fillOpacity: 0.94 },
-      labelStyle: { fill: isMembership ? '#6a675e' : '#53645f', fontSize: 10, fontWeight: 600 },
+      labelStyle: { fill: stroke, fontSize: 10, fontWeight: 650 },
     };
-  }), [flow.edges, selectedRelationshipId]);
+  }), [flow.edges, relationshipsById, selectedRelationshipId]);
 
   useEffect(() => {
     setNodes(flow.nodes.map((node) => ({
