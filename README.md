@@ -2,7 +2,7 @@
 
 A local-first visual workspace for creators who design a fictional world and hand structured story cues to a human ghostwriter.
 
-Continuum does **not** generate prose. It organizes chapters, characters, locations, facts, rules, plot threads, scenes, relationships, reveals, and continuity cues.
+Continuum does **not** generate prose. It organizes chapters, scenes, characters, locations, plot threads, facts, world rules, relationships, reveals, knowledge changes, and continuity cues.
 
 ## Current prototype
 
@@ -11,8 +11,12 @@ Continuum does **not** generate prose. It organizes chapters, characters, locati
 - First-class chapters with objectives, opening states, closing states, and chapter-level ghostwriter direction
 - Manual and inherited scene membership inside chapters
 - Scene-to-scene relationships can carry unassigned scenes into an unambiguous chapter hierarchy
-- Chapter workspace that correlates scenes, world entities, relationships, and the writing brief
-- Chapter-scoped storyboard and ghostwriter brief views
+- Chapter workspace that correlates scenes, world entities, custom relationships, structured effects, and the writing brief
+- Chapter-scoped Storyboard and ghostwriter Brief views
+- Structured Scene Effects for plot movement, fact movement, world-rule interaction, and character knowledge changes
+- Reusable Plot thread, Fact, and World rule nodes with specialized fields
+- Derived Story Effects in the Brief and exported HTML storyboard
+- Typed, color-coded semantic relationships in the World graph
 - Visual world graph with smooth relationships and distinct manual/inherited Chapter → Scene edges
 - Automatic World arrangement and drag-to-delete
 - Direct editing inside Storyboard, Brief, Chapters, and Library views
@@ -21,7 +25,7 @@ Continuum does **not** generate prose. It organizes chapters, characters, locati
 - IndexedDB autosave on the local machine
 - Portable `.continuum` project import/export
 - Self-contained chapter-organized HTML storyboard export
-- Legacy project migration from free-text chapter labels
+- Safe legacy migration for free-text chapter labels and unambiguous relationship verbs
 - Sample project included on first launch
 - No accounts, server, cloud database, or AI dependency
 
@@ -32,7 +36,7 @@ Requires Node.js 22 or newer.
 ```bash
 git clone https://github.com/ashutoshcjha/continuum-story-engine.git
 cd continuum-story-engine
-git switch agent/hierarchical-chapters-library
+git switch agent/scene-effects-engine
 npm install
 npm run dev
 ```
@@ -55,4 +59,5 @@ Uploaded images are optimized locally and encoded directly into the `.continuum`
 See:
 
 - [`docs/FILE_FORMAT.md`](docs/FILE_FORMAT.md) for the editable project contract
+- [`docs/STORY_LOGIC.md`](docs/STORY_LOGIC.md) for typed Plot threads, Facts, World rules, and Scene Effects
 - [`docs/LIBRARY_IMPORT.md`](docs/LIBRARY_IMPORT.md) for bulk CSV/JSON interchange

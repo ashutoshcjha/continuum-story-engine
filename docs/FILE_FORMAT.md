@@ -107,20 +107,179 @@ Derived chapter edges are not duplicated in the `relationships` array. The array
 
 Legacy version-1 files that used a free-text scene chapter label are normalized during import. Continuum creates matching chapter entities and assigns the scenes without discarding the original story material.
 
-## Relationships
+## Reusable story-logic nodes
 
-Relationships connect any two entities with a human-readable label. Chapter correlation views include:
+Plot threads, facts, and world rules remain normal entities with additional typed details.
 
-- manual chapter membership derived from `chapterId`
-- inherited chapter membership derived from scene-to-scene relationships
-- direct chapter relationships
-- scene relationships
-- POV, location, and participant references
-- connected world entities associated with chapter scenes
+### Plot thread
+
+```json
+{
+  "id": "thread_sabotage",
+  "type": "plot-thread",
+  "name": "Reactor sabotage",
+  "plotThread": {
+    "centralQuestion": "Who altered the containment system, and why?",
+    "stakes": "The colony may have been deliberately endangered.",
+    "status": "active",
+    "plannedPayoff": "Maya proves the disaster was authorized internally."
+  }
+}
+```
+
+Allowed status values: `planned`, `active`, `dormant`, `resolved`.
+
+### Fact
+
+```json
+{
+  "id": "fact_internal_damage",
+  "type": "fact",
+  "name": "Damage originated internally",
+  "fact": {
+    "proposition": "The containment damage originated inside the reactor.",
+    "truthStatus": "true",
+    "sensitivity": "secret",
+    "validFromSceneId": "scene_reactor_inspection"
+  }
+}
+```
+
+Allowed truth states: `true`, `false`, `uncertain`, `disputed`.
+
+Allowed sensitivities: `normal`, `secret`, `author-only`.
+
+### World rule
+
+```json
+{
+  "id": "rule_post_breach_entry",
+  "type": "world-rule",
+  "name": "Post-breach entry protocol",
+  "worldRule": {
+    "statement": "No human may enter a reactor chamber after containment is breached.",
+    "category": "legal",
+    "rigidity": "soft",
+    "consequence": "The entrant faces radiation exposure and criminal liability.",
+    "exceptionNotes": "Remote machines may enter."
+  }
+}
+```
+
+Rule categories include `physical`, `technological`, `magical`, `legal`, `cultural`, `religious`, `institutional`, and `social`.
+
+Rigidity is `hard` or `soft`.
+
+## Relationships and Scene Effects
+
+A relationship always has stable endpoints and a human-readable label:
+
+```json
+{
+  "id": "rel_...",
+  "sourceId": "scene_reactor_inspection",
+  "targetId": "thread_sabotage",
+  "label": "advances"
+}
+```
+
+New semantic fields let Continuum understand selected relationships without removing author flexibility.
+
+### Relationship kinds
+
+- `custom`
+- `scene-thread`
+- `scene-fact`
+- `scene-rule`
+- `character-fact`
+
+### Scene-to-thread example
+
+```json
+{
+  "id": "rel_...",
+  "sourceId": "scene_reactor_inspection",
+  "targetId": "thread_sabotage",
+  "kind": "scene-thread",
+  "action": "advance",
+  "label": "advances",
+  "sceneId": "scene_reactor_inspection",
+  "note": "Eliminates the external-attack explanation.",
+  "importance": "major"
+}
+```
+
+Thread actions: `introduce`, `advance`, `complicate`, `pause`, `payoff`, `resolve`.
+
+### Scene-to-fact example
+
+```json
+{
+  "sourceId": "scene_reactor_inspection",
+  "targetId": "fact_internal_damage",
+  "kind": "scene-fact",
+  "action": "reveal-reader",
+  "label": "reveals to reader",
+  "sceneId": "scene_reactor_inspection",
+  "note": "The blast pattern is visible on the inside wall."
+}
+```
+
+Fact actions: `establish`, `reveal-reader`, `conceal-reader`, `contradict`, `invalidate`.
+
+### Scene-to-rule example
+
+```json
+{
+  "sourceId": "scene_reactor_inspection",
+  "targetId": "rule_post_breach_entry",
+  "kind": "scene-rule",
+  "action": "violate",
+  "label": "violates",
+  "sceneId": "scene_reactor_inspection",
+  "consequenceOccurs": true
+}
+```
+
+Rule actions: `demonstrate`, `test`, `violate`, `establish-exception`, `enforce`.
+
+### Character knowledge example
+
+```json
+{
+  "sourceId": "character_maya",
+  "targetId": "fact_internal_damage",
+  "kind": "character-fact",
+  "action": "learn",
+  "label": "learns",
+  "sceneId": "scene_reactor_inspection",
+  "confidence": "certain",
+  "note": "Maya confirms the blast originated inside containment."
+}
+```
+
+Knowledge actions: `know`, `learn`, `suspect`, `believe`, `doubt`, `deny`, `forget`.
+
+Confidence values: `low`, `medium`, `high`, `certain`.
+
+Custom author-defined relationships keep `kind: "custom"` and may use any label.
+
+See [`STORY_LOGIC.md`](STORY_LOGIC.md) for the conceptual model and migration behavior.
+
+## Safe relationship migration
+
+Older files may contain only labels. Continuum upgrades a relationship only when both endpoints and the verb make the meaning unambiguous, such as:
+
+- Scene → Plot thread with `advances`
+- Scene → Fact with `reveals`
+- Scene → World rule with `violates`
+- Character → Fact with `learns`
+
+All other older edges remain custom relationships.
 
 ## World Library interchange
 
-Bulk Character, Location, Organization, Object, Plot thread, Fact, and World rule interchange uses a separate `continuum-library` JSON or CSV format. See [`LIBRARY_IMPORT.md`](LIBRARY_IMPORT.md).
+Bulk Character, Location, Organization, Object, Plot thread, Fact, and World rule interchange uses a separate `continuum-library` JSON or CSV format. Structured Plot thread, Fact, and World rule fields are included in those exports. See [`LIBRARY_IMPORT.md`](LIBRARY_IMPORT.md).
 
 ## Future compatibility
 
