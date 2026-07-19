@@ -1,8 +1,11 @@
 import { useRef, useState } from 'react';
 import { prepareStoryImage } from './imageProcessing';
 import { StoryLogicInspector } from './StoryLogicInspector';
+import { ScienceFictionInspector } from './ScienceFictionInspector';
+import { SceneContinuityEditor } from './SceneContinuityEditor';
 import type { EffectTargetType } from './SceneEffectsEditor';
 import type { SceneEffectInput } from './storyLogic';
+import type { SemanticDomain } from './scifi';
 import {
   getChapters,
   getSceneChapterResolution,
@@ -57,6 +60,7 @@ interface EntityInspectorProps {
   onAddEffect: (sceneId: string, input: SceneEffectInput) => void;
   onUpdateRelationship: (relationship: StoryRelationship) => void;
   onDeleteRelationship: (relationshipId: string) => void;
+  onCreateSemanticRelationship: (sourceId: string, targetId: string, domain: SemanticDomain, action: string, note: string) => void;
   onCreateEffectTarget: (
     sceneId: string,
     type: EffectTargetType,
@@ -73,6 +77,7 @@ export function EntityInspector({
   onAddEffect,
   onUpdateRelationship,
   onDeleteRelationship,
+  onCreateSemanticRelationship,
   onCreateEffectTarget,
 }: EntityInspectorProps) {
   const imageRef = useRef<HTMLInputElement>(null);
@@ -188,6 +193,15 @@ export function EntityInspector({
       />
 
       {!scene && !chapter && <StoryLogicInspector {...logicProps} />}
+
+      <ScienceFictionInspector
+        project={project}
+        entity={entity}
+        onUpdateEntity={updateEntity}
+        onCreateSemanticRelationship={onCreateSemanticRelationship}
+        onUpdateRelationship={onUpdateRelationship}
+        onDeleteRelationship={onDeleteRelationship}
+      />
 
       <section className="attachment-section">
         <div className="attachment-heading">
@@ -350,6 +364,7 @@ export function EntityInspector({
           <TextField label="Reveal" value={scene.scene.reveal} multiline onChange={(reveal) => patchScene({ reveal })} />
           <TextField label="Keep concealed" value={scene.scene.conceal} multiline onChange={(conceal) => patchScene({ conceal })} />
           <TextField label="Ghostwriter notes" value={scene.scene.ghostwriterNotes} multiline onChange={(ghostwriterNotes) => patchScene({ ghostwriterNotes })} />
+          <SceneContinuityEditor project={project} scene={scene} onUpdateScene={patchScene} />
         </div>
       )}
 

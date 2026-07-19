@@ -1,8 +1,9 @@
 import { InlineEdit } from './InlineEdit';
 import { ChapterEffectsSummary } from './SceneEffectsEditor';
+import { ChapterInsights } from './ChapterInsights';
+import { getFocusedChapterEntities } from './chapterScope';
 import { getChapterEffects, isEffectRelationship } from './storyLogic';
 import {
-  getChapterRelatedEntities,
   getChapters,
   getScenesForChapter,
   type ContinuumProject,
@@ -132,7 +133,7 @@ export function ChapterWorkspace({
 
   const scenes = getScenesForChapter(project, chapter.id);
   const effects = getChapterEffects(project, chapter.id);
-  const related = getChapterRelatedEntities(project, chapter.id);
+  const related = getFocusedChapterEntities(project, chapter.id);
   const relatedWorldEntities = related.filter((entity) => entity.type !== 'chapter' && entity.type !== 'scene');
   const scopeIds = new Set(related.map((entity) => entity.id));
   const names = new Map(project.entities.map((entity) => [entity.id, entity.name]));
@@ -232,7 +233,7 @@ export function ChapterWorkspace({
           </section>
 
           <section className="chapter-panel chapter-entities-panel">
-            <header><div><span>World correlation</span><h2>Related entities</h2></div><b>{relatedWorldEntities.length}</b></header>
+            <header><div><span>Focused correlation</span><h2>Related entities</h2></div><b>{relatedWorldEntities.length}</b></header>
             {relatedWorldEntities.length ? (
               <div className="chapter-entity-groups">
                 {Object.entries(groups).map(([type, entities]) => (
@@ -250,7 +251,7 @@ export function ChapterWorkspace({
                 ))}
               </div>
             ) : (
-              <p className="chapter-placeholder">Connect scenes to characters, locations, threads, facts, or objects to populate this view.</p>
+              <p className="chapter-placeholder">Connect scenes to characters, locations, threads, facts, systems, or organizations to populate this view.</p>
             )}
           </section>
 
@@ -273,6 +274,8 @@ export function ChapterWorkspace({
             </div>
           </section>
         </div>
+
+        <ChapterInsights project={project} chapterId={chapter.id} onSelectEntity={onSelectEntity} />
       </div>
     </section>
   );

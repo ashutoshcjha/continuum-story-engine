@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import '@xyflow/react/dist/style.css';
 import './styles.css';
+import './world-lenses.css';
+import './scifi-continuity.css';
 import { ChapterWorkspace } from './ChapterWorkspace';
 import { EditableBrief, EditableStoryboard } from './EditableViews';
 import { EntityInspector } from './EntityInspector';
@@ -40,8 +42,13 @@ import {
   normalizeStoryLogic,
   type SceneEffectInput,
 } from './storyLogic';
+import {
+  createSemanticRelationship,
+  normalizeScifiProject,
+  type SemanticDomain,
+  type TechnologyDetails,
+} from './scifi';
 import { WorldCanvas } from './WorldCanvas';
-import { createWorldLayout } from './worldLayout';
 
 type View = 'library' | 'world' | 'chapters' | 'storyboard' | 'brief';
 
@@ -57,6 +64,10 @@ const entityLabels: Record<EntityType, string> = {
   scene: 'Scene',
 };
 
+function normalizeContinuum(project: ContinuumProject): ContinuumProject {
+  return normalizeScifiProject(normalizeStoryLogic(normalizeProject(project)));
+}
+
 function isChapterMembershipRelationship(relationshipId?: string): boolean {
   return Boolean(relationshipId?.startsWith(chapterMembershipPrefix) || relationshipId?.startsWith(chapterInheritedPrefix));
 }
@@ -68,7 +79,7 @@ function membershipSceneId(relationshipId?: string): string | undefined {
 }
 
 export default function App() {
-  const [project, setProject] = useState<ContinuumProject>(() => normalizeStoryLogic(createSampleProject()));
+  const [project, setProject] = useState<ContinuumProject>(() => normalizeContinuum(createSampleProject()));
   const [selectedId, setSelectedId] = useState<string>();
   const [selectedRelationshipId, setSelectedRelationshipId] = useState<string>();
   const [selectedChapterId, setSelectedChapterId] = useState<string>();
@@ -78,7 +89,7 @@ export default function App() {
 
   useEffect(() => {
     loadLastLocalProject().then((stored) => {
-      const loaded = normalizeStoryLogic(stored ? normalizeProject(stored) : normalizeProject(project));
+      const loaded = normalizeContinuum(stored ?? project);
       setProject(loaded);
       setSelectedChapterId(getChapters(loaded)[0]?.id);
       setSaveState('Saved locally');
@@ -143,13 +154,13 @@ export default function App() {
   };
 
   const updateEntity = (entity: StoryEntity) => {
-    const normalized = initializeStoryLogicEntity(entity);
-    setProject((current) => ({
+    const logicNormalized = initializeStoryLogicEntity(entity);
+    setProject((current) => normalizeScifiProject({
       ...current,
-      entities: current.entities.map((item) => item.id === normalized.id ? normalized : item),
+      entities: current.entities.map((item) => item.id === logicNormalized.id ? logicNormalized : item),
     }));
-    if (isStoryChapter(normalized)) setSelectedChapterId(normalized.id);
-    if (isStoryScene(normalized) && normalized.scene.chapterId) setSelectedChapterId(normalized.scene.chapterId);
+    if (isStoryChapter(logicNormalized)) setSelectedChapterId(logicNormalized.id);
+    if (isStoryScene(logicNormalized) && logicNormalized.scene.chapterId) setSelectedChapterId(logicNormalized.scene.chapterId);
   };
 
   const updateRelationship = (relationship: StoryRelationship) => {
@@ -164,19 +175,6 @@ export default function App() {
       ...current,
       entities: current.entities.map((item) => item.id === id ? { ...item, position } : item),
     }));
-  };
-
-  const arrangeWorld = () => {
-    setProject((current) => {
-      const positions = createWorldLayout(current);
-      return {
-        ...current,
-        entities: current.entities.map((entity) => ({
-          ...entity,
-          position: positions[entity.id] ?? entity.position,
-        })),
-      };
-    });
   };
 
   const addEntity = (type: EntityType) => {
@@ -197,16 +195,39 @@ export default function App() {
       setView('chapters');
     }
 
-    setProject((current) => ({ ...current, entities: [...current.entities, entity] }));
+    setProject((current) => normalizeScifiProject({ ...current, entities: [...current.entities, entity] }));
     setSelectedId(entity.id);
     setSelectedRelationshipId(undefined);
+  };
+
+  const addTechnology = () => {
+    const entity = createEntity('object', project.entities.filter((item) => item.type === 'object').length);
+    const technology: TechnologyDetails = {
+      domain: 'general',
+      purpose: '',
+      operatingPrinciple: '',
+      inputs: '',
+      outputs: '',
+      dependencies: '',
+      limitations: '',
+      failureModes: '',
+      environmentalRequirements: '',
+      researchNotes: '',
+    };
+    entity.name = 'Untitled technology';
+    entity.tags = ['technology'];
+    entity.technology = technology;
+    setProject((current) => normalizeScifiProject({ ...current, entities: [...current.entities, entity] }));
+    setSelectedId(entity.id);
+    setSelectedRelationshipId(undefined);
+    setView('library');
   };
 
   const addLibraryEntity = (type: LibraryEntityType) => addEntity(type);
 
   const applyLibraryRecords = (candidates: LibraryImportCandidate[], updateMatches: boolean): LibraryImportResult => {
     const result = applyLibraryImport(project, candidates, updateMatches);
-    const normalizedProject = normalizeStoryLogic(result.project);
+    const normalizedProject = normalizeContinuum(result.project);
     setProject(normalizedProject);
     return { ...result, project: normalizedProject };
   };
@@ -215,7 +236,7 @@ export default function App() {
     const trimmedName = name.trim();
     if (!trimmedName) return;
 
-    setProject((current) => {
+    setProject((current) => normalizeScifiProject((() => {
       const scene = current.entities.find((entity): entity is StoryScene => entity.id === sceneId && isStoryScene(entity));
       const character = createEntity('character', current.entities.filter((entity) => entity.type === 'character').length);
       character.name = trimmedName;
@@ -243,7 +264,7 @@ export default function App() {
           character,
         ],
       };
-    });
+    })()));
   };
 
   const addSceneEffect = (sceneId: string, input: SceneEffectInput) => {
@@ -264,7 +285,7 @@ export default function App() {
   ) => {
     const trimmedName = name.trim();
     if (!trimmedName) return;
-    setProject((current) => {
+    setProject((current) => normalizeScifiProject((() => {
       let entity = initializeStoryLogicEntity(createEntity(type, current.entities.filter((item) => item.type === type).length));
       entity = { ...entity, name: trimmedName };
       if (type === 'plot-thread' && entity.plotThread) {
@@ -282,7 +303,20 @@ export default function App() {
         entities: [...current.entities, entity],
         relationships: [...current.relationships, relationship],
       };
-    });
+    })()));
+  };
+
+  const createSemanticRelationshipRecord = (
+    sourceId: string,
+    targetId: string,
+    domain: SemanticDomain,
+    action: string,
+    note: string,
+  ) => {
+    const relationship = createSemanticRelationship(sourceId, targetId, domain, action, note);
+    setProject((current) => ({ ...current, relationships: [...current.relationships, relationship] }));
+    setSelectedRelationshipId(relationship.id);
+    setSelectedId(undefined);
   };
 
   const deletionBlocker = (entity: StoryEntity): string | undefined => {
@@ -316,6 +350,13 @@ export default function App() {
               povCharacterId: item.scene.povCharacterId === id ? undefined : item.scene.povCharacterId,
               locationId: item.scene.locationId === id ? undefined : item.scene.locationId,
               participantIds: item.scene.participantIds.filter((participantId) => participantId !== id),
+              travel: item.scene.travel
+                ? {
+                  ...item.scene.travel,
+                  originId: item.scene.travel.originId === id ? undefined : item.scene.travel.originId,
+                  destinationId: item.scene.travel.destinationId === id ? undefined : item.scene.travel.destinationId,
+                }
+                : item.scene.travel,
             },
           };
         }),
@@ -414,7 +455,7 @@ export default function App() {
               const file = event.target.files?.[0];
               if (!file) return;
               try {
-                const imported = normalizeStoryLogic(await importProject(file));
+                const imported = normalizeContinuum(await importProject(file));
                 setProject(imported);
                 setSelectedChapterId(getChapters(imported)[0]?.id);
                 clearSelection();
@@ -439,12 +480,13 @@ export default function App() {
               <i>{entityLabels[type].slice(0, 1)}</i>{entityLabels[type]}<b>＋</b>
             </button>
           ))}
+          <button onClick={addTechnology}><i>T</i>Technology / System<b>＋</b></button>
         </div>
         <button
           className="new-project"
           onClick={() => {
             if (window.confirm('Start a new blank project? Export the current project first if needed.')) {
-              const blank = normalizeStoryLogic(createEmptyProject());
+              const blank = normalizeContinuum(createEmptyProject());
               setProject(blank);
               setSelectedChapterId(getChapters(blank)[0]?.id);
               clearSelection();
@@ -470,13 +512,14 @@ export default function App() {
             project={project}
             selectedEntityId={selectedId}
             selectedRelationshipId={selectedRelationshipId}
+            selectedChapterId={selectedChapterId}
             onSelectEntity={selectEntity}
             onSelectRelationship={selectRelationship}
+            onSelectChapter={selectChapter}
             onClearSelection={clearSelection}
             onMoveEntity={moveEntity}
             onCreateRelationship={createRelationship}
             onDeleteRelationship={deleteRelationship}
-            onArrangeWorld={arrangeWorld}
             onRequestDeleteEntity={requestDeleteEntity}
           />
         )}
@@ -535,6 +578,7 @@ export default function App() {
           onAddEffect={addSceneEffect}
           onUpdateRelationship={updateRelationship}
           onDeleteRelationship={deleteRelationship}
+          onCreateSemanticRelationship={createSemanticRelationshipRecord}
           onCreateEffectTarget={createEffectTarget}
         />
       )}
