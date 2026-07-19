@@ -3,11 +3,18 @@ import { ChapterTabs } from './ChapterWorkspace';
 import { InlineEdit, InlineSelect } from './InlineEdit';
 import { SceneCharacterEditor } from './SceneCharacterEditor';
 import {
+  SceneEffectsEditor,
+  SceneEffectsSummary,
+  type EffectTargetType,
+} from './SceneEffectsEditor';
+import type { SceneEffectInput } from './storyLogic';
+import {
   getChapters,
   getScenesForChapter,
   type ContinuumProject,
   type StoryChapter,
   type StoryEntity,
+  type StoryRelationship,
   type StoryScene,
 } from './model';
 
@@ -16,6 +23,18 @@ interface SharedViewProps {
   selectedChapterId?: string;
   onSelectChapter: (chapterId: string) => void;
   onUpdateEntity: (entity: StoryEntity) => void;
+}
+
+interface EffectCallbacks {
+  onAddEffect: (sceneId: string, input: SceneEffectInput) => void;
+  onUpdateRelationship: (relationship: StoryRelationship) => void;
+  onDeleteRelationship: (relationshipId: string) => void;
+  onCreateEffectTarget: (
+    sceneId: string,
+    type: EffectTargetType,
+    name: string,
+    input: Omit<SceneEffectInput, 'targetId'>,
+  ) => void;
 }
 
 function updateChapterDetails(
@@ -49,7 +68,11 @@ export function EditableStoryboard({
   onSelectEntity,
   onUpdateEntity,
   onCreateCharacter,
-}: SharedViewProps & {
+  onAddEffect,
+  onUpdateRelationship,
+  onDeleteRelationship,
+  onCreateEffectTarget,
+}: SharedViewProps & EffectCallbacks & {
   onSelectEntity: (entityId: string) => void;
   onCreateCharacter: (sceneId: string, name: string) => void;
 }) {
@@ -87,7 +110,7 @@ export function EditableStoryboard({
             />
           </p>
         )}
-        <span className="inline-edit-hint">Double-click text or selections to edit · Ctrl/⌘ + Enter saves multiline fields</span>
+        <span className="inline-edit-hint">Double-click text or selections to edit · Story effects connect the scene to threads, facts, rules, and knowledge</span>
       </div>
 
       <div className="scene-grid">
@@ -192,6 +215,14 @@ export function EditableStoryboard({
                 onCommit={(turningPoint) => updateSceneDetails(scene, { turningPoint }, onUpdateEntity)}
               />
             </div>
+            <SceneEffectsEditor
+              project={project}
+              scene={scene}
+              onAddEffect={onAddEffect}
+              onUpdateRelationship={onUpdateRelationship}
+              onDeleteRelationship={onDeleteRelationship}
+              onCreateEffectTarget={onCreateEffectTarget}
+            />
             {(scene.links?.length ?? 0) > 0 && (
               <div className="scene-link-note">↗ {scene.links.length} linked reference{scene.links.length === 1 ? '' : 's'}</div>
             )}
@@ -243,7 +274,7 @@ export function EditableBrief({
     <section className="brief">
       <ChapterTabs project={project} selectedChapterId={chapter?.id} onSelect={onSelectChapter} />
       <div className="brief-paper">
-        <div className="brief-edit-notice">Double-click any outlined text to edit the source field directly.</div>
+        <div className="brief-edit-notice">Double-click outlined text to edit. Structured story effects below are generated from the relationship model.</div>
         <span className="eyebrow">Ghostwriter chapter briefing document</span>
         <h1>
           {chapter ? (
@@ -331,37 +362,14 @@ export function EditableBrief({
               />
             </p>
             <div className="brief-grid">
-              <BriefField
-                label="Purpose"
-                value={scene.scene.purpose}
-                onCommit={(purpose) => updateSceneDetails(scene, { purpose }, onUpdateEntity)}
-              />
-              <BriefField
-                label="Conflict"
-                value={scene.scene.conflict}
-                onCommit={(conflict) => updateSceneDetails(scene, { conflict }, onUpdateEntity)}
-              />
-              <BriefField
-                label="Turning point"
-                value={scene.scene.turningPoint}
-                onCommit={(turningPoint) => updateSceneDetails(scene, { turningPoint }, onUpdateEntity)}
-              />
-              <BriefField
-                label="Outcome"
-                value={scene.scene.outcome}
-                onCommit={(outcome) => updateSceneDetails(scene, { outcome }, onUpdateEntity)}
-              />
-              <BriefField
-                label="Reveal"
-                value={scene.scene.reveal}
-                onCommit={(reveal) => updateSceneDetails(scene, { reveal }, onUpdateEntity)}
-              />
-              <BriefField
-                label="Keep concealed"
-                value={scene.scene.conceal}
-                onCommit={(conceal) => updateSceneDetails(scene, { conceal }, onUpdateEntity)}
-              />
+              <BriefField label="Purpose" value={scene.scene.purpose} onCommit={(purpose) => updateSceneDetails(scene, { purpose }, onUpdateEntity)} />
+              <BriefField label="Conflict" value={scene.scene.conflict} onCommit={(conflict) => updateSceneDetails(scene, { conflict }, onUpdateEntity)} />
+              <BriefField label="Turning point" value={scene.scene.turningPoint} onCommit={(turningPoint) => updateSceneDetails(scene, { turningPoint }, onUpdateEntity)} />
+              <BriefField label="Outcome" value={scene.scene.outcome} onCommit={(outcome) => updateSceneDetails(scene, { outcome }, onUpdateEntity)} />
+              <BriefField label="Reveal" value={scene.scene.reveal} onCommit={(reveal) => updateSceneDetails(scene, { reveal }, onUpdateEntity)} />
+              <BriefField label="Keep concealed" value={scene.scene.conceal} onCommit={(conceal) => updateSceneDetails(scene, { conceal }, onUpdateEntity)} />
             </div>
+            <SceneEffectsSummary project={project} scene={scene} />
             <blockquote>
               <b>Scene direction</b>
               <InlineEdit
