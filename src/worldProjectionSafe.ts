@@ -156,5 +156,9 @@ export function buildWorldProjection(project: ContinuumProject, options: WorldPr
     };
     return appendPowerResources(project, buildBaseProjection(sanitized, options));
   }
-  return appendExpandedBookGroups(project, options, buildBaseProjection(project, options));
+
+  const effectiveOptions: WorldProjectionOptions = options.lens === 'geography' || options.lens === 'technology'
+    ? { ...options, showReference: true }
+    : options;
+  return appendExpandedBookGroups(project, effectiveOptions, buildBaseProjection(project, effectiveOptions));
 }
