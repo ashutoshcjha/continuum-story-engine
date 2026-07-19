@@ -26,8 +26,8 @@ import {
   worldLensLabels,
   type WorldLens,
 } from './scifi';
+import { buildWorldProjection } from './worldProjectionSafe';
 import {
-  buildWorldProjection,
   isVirtualEdge,
   type WorldNodeData,
   type WorldScope,
@@ -167,7 +167,7 @@ export function WorldCanvas({
   const [isOverDeleteTarget, setIsOverDeleteTarget] = useState(false);
   const deleteTargetRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef<{ id: string; position: { x: number; y: number } } | undefined>(undefined);
-  const flowInstanceRef = useRef<ReactFlowInstance | null>(null);
+  const flowInstanceRef = useRef<ReactFlowInstance<any, Edge> | null>(null);
   const chapters = getChapters(project);
   const selectedIsScene = project.entities.some((entity) => entity.id === selectedEntityId && isStoryScene(entity));
 
