@@ -2,6 +2,7 @@ import type { KeyboardEvent } from 'react';
 import { ChapterTabs } from './ChapterWorkspace';
 import { InlineEdit, InlineSelect } from './InlineEdit';
 import { SceneCharacterEditor } from './SceneCharacterEditor';
+import { SceneContinuityEditor, SceneContinuitySummary } from './SceneContinuityEditor';
 import {
   SceneEffectsEditor,
   SceneEffectsSummary,
@@ -110,7 +111,7 @@ export function EditableStoryboard({
             />
           </p>
         )}
-        <span className="inline-edit-hint">Double-click text or selections to edit · Story effects connect the scene to threads, facts, rules, and knowledge</span>
+        <span className="inline-edit-hint">Double-click text or selections to edit · Story effects and environmental continuity stay attached to the scene</span>
       </div>
 
       <div className="scene-grid">
@@ -223,6 +224,12 @@ export function EditableStoryboard({
               onDeleteRelationship={onDeleteRelationship}
               onCreateEffectTarget={onCreateEffectTarget}
             />
+            <SceneContinuityEditor
+              project={project}
+              scene={scene}
+              compact
+              onUpdateScene={(changes) => updateSceneDetails(scene, changes, onUpdateEntity)}
+            />
             {(scene.links?.length ?? 0) > 0 && (
               <div className="scene-link-note">↗ {scene.links.length} linked reference{scene.links.length === 1 ? '' : 's'}</div>
             )}
@@ -274,7 +281,7 @@ export function EditableBrief({
     <section className="brief">
       <ChapterTabs project={project} selectedChapterId={chapter?.id} onSelect={onSelectChapter} />
       <div className="brief-paper">
-        <div className="brief-edit-notice">Double-click outlined text to edit. Structured story effects below are generated from the relationship model.</div>
+        <div className="brief-edit-notice">Double-click outlined text to edit. Story effects and continuity summaries are generated from the structured model.</div>
         <span className="eyebrow">Ghostwriter chapter briefing document</span>
         <h1>
           {chapter ? (
@@ -370,6 +377,7 @@ export function EditableBrief({
               <BriefField label="Keep concealed" value={scene.scene.conceal} onCommit={(conceal) => updateSceneDetails(scene, { conceal }, onUpdateEntity)} />
             </div>
             <SceneEffectsSummary project={project} scene={scene} />
+            <SceneContinuitySummary project={project} scene={scene} />
             <blockquote>
               <b>Scene direction</b>
               <InlineEdit
