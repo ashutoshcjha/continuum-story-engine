@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AppendImportDialog } from './AppendImportDialog';
+import { applyAppendImport } from './appendApply';
 import {
-  applyAppendImport,
   exportAIContext,
   prepareAppendImport,
   type AppendAnalysis,
@@ -22,6 +22,11 @@ import './exchange.css';
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'The project exchange action could not be completed.';
+}
+
+async function settleAutosave(): Promise<void> {
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+  await new Promise<void>((resolve) => window.setTimeout(resolve, 1350));
 }
 
 export function ProjectExchangeActions() {
@@ -58,6 +63,7 @@ export function ProjectExchangeActions() {
   const withCurrentProject = async (action: (project: ContinuumProject) => void | Promise<void>) => {
     setBusy(true);
     try {
+      await settleAutosave();
       const project = await loadLastLocalProject();
       if (!project) throw new Error('No locally saved Continuum project is available yet.');
       await action(project);
@@ -71,6 +77,7 @@ export function ProjectExchangeActions() {
   const beginAppend = async (file: File) => {
     setBusy(true);
     try {
+      await settleAutosave();
       const project = await loadLastLocalProject();
       if (!project) throw new Error('No locally saved Continuum project is available yet.');
       const prepared = await prepareAppendImport(file, project);
