@@ -1,0 +1,32 @@
+{
+  "format": "continuum-append",
+  "formatVersion": 1,
+  "baseProjectId": "replace-with-exported-project-id",
+  "changeSetId": "changeset_sample_plot_update",
+  "label": "Sample proposed plot update",
+  "generatedAt": "2026-07-26T12:00:00.000Z",
+  "generatedBy": "external-ai",
+  "notes": "Example only. Review all ai-proposed records before treating them as canonical.",
+  "entities": [
+    {
+      "id": "fact_sample_unverified_signal",
+      "type": "fact",
+      "name": "Unverified signal",
+      "summary": "A proposed signal that may connect two existing plot threads.",
+      "notes": "AI proposal. The source notes do not yet establish whether the signal is real.",
+      "tags": ["ai-proposed", "unreviewed"],
+      "images": [],
+      "links": [],
+      "position": { "x": 0, "y": 0 },
+      "fact": {
+        "proposition": "The signal may originate from an existing hidden system.",
+        "truthStatus": "uncertain",
+        "sensitivity": "author-only",
+        "factType": "hypothesis",
+        "confidence": "low",
+        "sourceReliability": "unknown"
+      }
+    }
+  ],
+  "relationships": []
+}
