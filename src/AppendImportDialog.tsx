@@ -26,8 +26,12 @@ export function AppendImportDialog({ analysis, onCancel, onApply }: AppendImport
     ...analysis.entityPlans.filter((plan) => plan.issue).map((plan) => plan.issue!),
     ...analysis.relationshipPlans.filter((plan) => plan.issue).map((plan) => plan.issue!),
   ];
+  const actionableCount = analysis.stats.entityAdds
+    + analysis.stats.relationshipAdds
+    + (updateMatches ? analysis.stats.entityUpdates + analysis.stats.relationshipUpdates : 0);
 
   const apply = async () => {
+    if (!actionableCount) return;
     setIsApplying(true);
     setError(undefined);
     try {
@@ -81,6 +85,13 @@ export function AppendImportDialog({ analysis, onCancel, onApply }: AppendImport
           </section>
         )}
 
+        {!actionableCount && (
+          <section className="append-issue-list">
+            <h3>No changes to apply</h3>
+            <p>Enable matching updates or choose a file containing new records.</p>
+          </section>
+        )}
+
         <div className="append-rollback-note">
           <b>One-step rollback is created before applying.</b>
           <p>Undo restores the exact project state from immediately before this append. Manual edits made after the append would also be reverted.</p>
@@ -89,7 +100,7 @@ export function AppendImportDialog({ analysis, onCancel, onApply }: AppendImport
         {error && <p className="append-error">{error}</p>}
         <footer>
           <button type="button" disabled={isApplying} onClick={onCancel}>Cancel</button>
-          <button type="button" className="primary" disabled={isApplying} onClick={apply}>{isApplying ? 'Applying…' : 'Apply append'}</button>
+          <button type="button" className="primary" disabled={isApplying || !actionableCount} onClick={apply}>{isApplying ? 'Applying…' : 'Apply append'}</button>
         </footer>
       </section>
     </div>
