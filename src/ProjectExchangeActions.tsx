@@ -107,22 +107,33 @@ export function ProjectExchangeActions() {
   };
 
   const undoAppend = async () => {
-    const snapshot = await loadAppendRollbackSnapshot();
-    if (!snapshot) {
-      setRollback(undefined);
-      window.alert('There is no append snapshot to restore.');
-      return;
-    }
-    const confirmed = window.confirm(`Restore the project to immediately before “${snapshot.label}”?\n\nThis restores the exact pre-append snapshot. Manual edits made after that append will also be lost.`);
-    if (!confirmed) return;
     setBusy(true);
     try {
+      await settleAutosave();
+      const [snapshot, currentProject] = await Promise.all([
+        loadAppendRollbackSnapshot(),
+        loadLastLocalProject(),
+      ]);
+      if (!snapshot) {
+        setRollback(undefined);
+        window.alert('There is no append snapshot to restore.');
+        return;
+      }
+      if (!currentProject || currentProject.id !== snapshot.projectId) {
+        await clearAppendRollbackSnapshot();
+        setRollback(undefined);
+        window.alert('The rollback belongs to a different project and has been cleared.');
+        return;
+      }
+      const confirmed = window.confirm(`Restore the project to immediately before “${snapshot.label}”?\n\nThis restores the exact pre-append snapshot. Manual edits made after that append will also be lost.`);
+      if (!confirmed) return;
       await saveLocalProject({ ...snapshot.data, updatedAt: new Date().toISOString() });
       await clearAppendRollbackSnapshot();
       setRollback(undefined);
       window.location.reload();
     } catch (error) {
       window.alert(errorMessage(error));
+    } finally {
       setBusy(false);
     }
   };
