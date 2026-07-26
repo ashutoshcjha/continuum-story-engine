@@ -275,6 +275,8 @@ export function EntityInspector({
           <TextField label="Opening state" value={chapter.chapter.openingState} multiline onChange={(openingState) => patchChapter({ openingState })} />
           <TextField label="Closing state" value={chapter.chapter.closingState} multiline onChange={(closingState) => patchChapter({ closingState })} />
           <TextField label="Ghostwriter notes" value={chapter.chapter.ghostwriterNotes} multiline onChange={(ghostwriterNotes) => patchChapter({ ghostwriterNotes })} />
+          <TextField label="Complete chapter manuscript" value={chapter.chapter.draft ?? ''} multiline onChange={(draft) => patchChapter({ draft })} />
+          <TextField label="Full chapter source notes" value={chapter.notes} multiline onChange={(notes) => patch({ notes })} />
         </div>
       )}
 
@@ -364,6 +366,8 @@ export function EntityInspector({
           <TextField label="Reveal" value={scene.scene.reveal} multiline onChange={(reveal) => patchScene({ reveal })} />
           <TextField label="Keep concealed" value={scene.scene.conceal} multiline onChange={(conceal) => patchScene({ conceal })} />
           <TextField label="Ghostwriter notes" value={scene.scene.ghostwriterNotes} multiline onChange={(ghostwriterNotes) => patchScene({ ghostwriterNotes })} />
+          <TextField label="Complete scene manuscript" value={scene.scene.draft ?? ''} multiline onChange={(draft) => patchScene({ draft })} />
+          <TextField label="Full scene source notes" value={scene.notes} multiline onChange={(notes) => patch({ notes })} />
           <SceneContinuityEditor project={project} scene={scene} onUpdateScene={patchScene} />
         </div>
       )}

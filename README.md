@@ -30,6 +30,10 @@ Continuum does **not** generate prose. It organizes chapters, scenes, characters
 - Chapter systems dashboard for concept load, travel sequence, evidence, power, technology, and artificial identities
 - Smooth semantic relationships, drag-to-delete, and direct editing throughout the application
 - Images and external links attached to any entity
+- Complete human export with full notes, manuscript fields, world bible, relationships, and continuity information
+- AI context export with stable IDs, schemas, scene format, and directly importable output contracts
+- Additive project import with preview, ID/name reconciliation, reference remapping, and image preservation
+- One-step persistent rollback to the exact pre-append project
 - IndexedDB autosave on the local machine
 - Portable `.continuum` project import/export
 - Safe legacy migration for free-text chapter labels and unambiguous relationship verbs
@@ -42,7 +46,7 @@ Requires Node.js 22 or newer.
 ```bash
 git clone https://github.com/ashutoshcjha/continuum-story-engine.git
 cd continuum-story-engine
-git switch agent/world-lenses-scifi-milestones
+git switch agent/full-export-ai-append-rollback
 npm install
 npm run dev
 ```
@@ -69,3 +73,4 @@ Uploaded images are optimized locally and encoded directly into the `.continuum`
 - [`docs/WORLD_LENSES.md`](docs/WORLD_LENSES.md) — focused projections and progressive disclosure
 - [`docs/SCIFI_CONTINUITY.md`](docs/SCIFI_CONTINUITY.md) — environment, travel, technology, evidence, power, and artificial identities
 - [`docs/LIBRARY_IMPORT.md`](docs/LIBRARY_IMPORT.md) — bulk CSV/JSON interchange
+- [`docs/PROJECT_EXCHANGE.md`](docs/PROJECT_EXCHANGE.md) — complete human export, AI interchange, append, and rollback
